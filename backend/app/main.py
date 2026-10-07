@@ -1,6 +1,9 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import supabase
+from supabase import Client
+
+from app.database import get_supabase
+from app.routers import profiles
 
 app = FastAPI()
 app.add_middleware(
@@ -11,12 +14,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(profiles.router)
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
 @app.post("/test-supabase")
-def test_supabase():
+def test_supabase(supabase: Client = Depends(get_supabase)):
     response = (
         supabase
         .table("backend_test")
@@ -24,13 +29,15 @@ def test_supabase():
         .execute()
     )
 
+    return {"data": response.data}
+
 @app.get("/test-supabase")
-def read_supabase():
+def read_supabase(supabase: Client = Depends(get_supabase)):
     response = (
         supabase
         .table("backend_test")
         .select("*")
         .execute()
     )
-    
+
     return {"data": response.data}
