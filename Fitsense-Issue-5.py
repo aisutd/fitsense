@@ -1,9 +1,19 @@
-profile = {}
+from pathlib import Path
 
-with open ("user_Profiles.txt", "r") as file:
-    for line in file:
-        key, value = line.strip().split(":")
-        profile[key] = value.strip()
+profile = {}
+profile_path = Path(__file__).resolve().with_name("user_Profiles.txt")
+
+with profile_path.open("r", encoding="utf-8") as file:
+    for line_number, line in enumerate(file, start=1):
+        line = line.strip()
+        if not line:
+            continue
+        if ":" not in line:
+            raise ValueError(
+                f"{profile_path.name}, line {line_number}: expected key: value"
+            )
+        key, value = line.split(":", 1)
+        profile[key.strip()] = value.strip()
 
 
 def determine_workout(personal_goal): #Could Add level and points to the determining function but what difference would that make?
