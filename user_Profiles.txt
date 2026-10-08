@@ -1,0 +1,7 @@
+name: John Smith
+age: 20
+fitness_level: Beginner
+goal: Build Muscle
+days_per_week: 3
+points: 0
+
