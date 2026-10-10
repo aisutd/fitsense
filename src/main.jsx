@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./app.css";
+import Background from "./backgroundA";
+import { titlePattern } from "./patterns";
 
 // SCREEN 1: NAME
 
@@ -16,29 +18,39 @@ function NameGreeting({ onContinue }) {
   }
 
   return (
-    <div className="intro-screen">
-      <header>
-        <h1>---Welcome to FitSense---</h1>
-      </header>
+    <div className="relative min-h-screen overflow-hidden bg-black font-title text-neutral-200">
+      <Background pattern={titlePattern} />
 
-      <h2>Let's start with the introduction! What's your name?</h2>
+      <div className="relative z-10">
+        <h1 className="px-[3vw] pt-[2vw] text-[10vw] font-light leading-none">
+          FIT SENSE
+        </h1>
 
-      <input
-        className="text-input"
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Type your name"
-      />
+        <div className="ml-[35vw] mt-[8vh] max-w-md px-4">
+          <h2 className="text-xl md:text-2xl">
+            Let's start with the introduction! What's your name?
+          </h2>
 
-      {name.trim() !== "" && (
-        <button
-          className="continue-button"
-          onClick={handleClick}
-        >
-          Continue
-        </button>
-      )}
+          <input
+            className="mt-4 w-full border-b-2 border-neutral-200 bg-transparent py-2 text-xl text-white outline-none placeholder:text-neutral-500"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Type your name"
+          />
+
+          <div className="mt-6 flex justify-end">
+            {name.trim() !== "" && (
+              <button
+                className="border-2 border-neutral-200 px-6 py-2 text-lg hover:bg-neutral-200 hover:text-black"
+                onClick={handleClick}
+              >
+                Continue
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -459,12 +471,12 @@ function App() {
       />
     );
   }
+// grab the info you need on users here
 
   if (screen === 7) {
     return (
       <div className="intro-screen">
         <h1>FitSense Profile</h1>
-
         <p>Name: {name}</p>
         <p>Goal: {goal}</p>
         <p>Proficiency: {proficiency}</p>
