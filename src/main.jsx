@@ -127,22 +127,22 @@ function NextScreen({ goal, setGoal, onContinue }) {
     {
       name: "Lose Weight",
       description:
-        "Blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah."
+        "Lose weight and improve overall health."
     },
     {
       name: "Build Muscle",
       description:
-        "Blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah."
+        "Build muscle and increase strength."
     },
     {
       name: "Endurance",
       description:
-        "Blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah."
+        "Improve endurance and cardiovascular fitness."
     },
     {
       name: "General Fitness",
       description:
-        "Blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah."
+        "Maintain overall fitness and well-being."
     }
   ];
 
@@ -193,17 +193,17 @@ function Proficiency({
     {
       name: "Beginner",
       description:
-        "Blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah."
+        "New to fitness and looking to get started."
     },
     {
       name: "Intermediate",
       description:
-        "Blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah."
+        "Have some experience with fitness and looking to improve."
     },
     {
       name: "Advanced",
       description:
-        "Blah blah blah blah blah blah blah blah blah blah blah blah blah blah blah."
+        "Experienced in fitness and looking for advanced challenges."
     }
   ];
 
@@ -254,13 +254,13 @@ function WorkoutDays({
   onContinue
 }) {
   const days = [
-    "1 Day",
-    "2 Days",
-    "3 Days",
-    "4 Days",
-    "5 Days",
-    "6 Days",
-    "7 Days"
+    "1 Day | ",
+    "2 Days |",
+    "3 Days |",
+    "4 Days |",
+    "5 Days |",
+    "6 Days |",
+    "7 Days |"
   ];
 
   return (
