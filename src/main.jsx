@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import "./app.css";
+import "./App.css";
 import ScreenLayout from "./ScreenLayout";
 import ContinueButton from "./ContinueButton";
 import OptionButton from "./OptionButton";
+import { supabase } from "./supabaseClient";
 
 // SCREEN 1: NAME
 
@@ -294,7 +295,9 @@ function WorkoutDays({
 function WorkoutLocation({
   workoutLocation,
   setWorkoutLocation,
-  onContinue
+  onContinue,
+  saving,
+  saveError
 }) {
   const locations = ["Home", "Gym", "Both"];
 
@@ -315,9 +318,12 @@ function WorkoutLocation({
             />
           ))}
         </div>
+          {saveError && (
+          <p className="mt-4 text-sm text-red-400">{saveError}</p>
+        )}
 
         <ContinueButton
-          show={workoutLocation !== ""}
+          show={workoutLocation !== "" && !saving}
           onClick={onContinue}
         />
       </div>
@@ -325,6 +331,8 @@ function WorkoutLocation({
   );
 }
 
+
+// MAIN APP
 
 // MAIN APP
 function ProfileItem({ label, value }) {
@@ -347,6 +355,8 @@ function App() {
   const [weight, setWeight] = useState("");
   const [feet, setFeet] = useState("");
   const [inches, setInches] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
 
   function handleNameContinue(nameFromScreen) {
@@ -370,9 +380,33 @@ function App() {
     setScreen(6);
   }
 
-  function handleWorkoutLocationContinue() {
-    setScreen(7);
+  async function handleWorkoutLocationContinue() {
+  setSaving(true);
+  setSaveError("");
+
+  const { error } = await supabase.from("users").insert({
+    name: name,
+    age: age,
+    weight_lbs: weight,
+    height_feet: feet,
+    height_inches: inches,
+    goal: goal,
+    proficiency: proficiency,
+    workout_days: workoutDays,
+    workout_location: workoutLocation
+  });
+
+  console.log("insert error:", error);
+
+  setSaving(false);
+
+  if (error) {
+    setSaveError("Couldn't save your profile. Please try again.");
+    return;
   }
+
+  setScreen(7);
+}
 
   if (screen === 1) {
     return (
@@ -435,7 +469,9 @@ if (screen === 2) {
         workoutLocation={workoutLocation}
         setWorkoutLocation={setWorkoutLocation}
         onContinue={handleWorkoutLocationContinue}
-      />
+        saving={saving}
+        saveError={saveError}
+/>
     );
   }
 // grab the info you need on users here
