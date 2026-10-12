@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./app.css";
-import Background from "./backgroundA";
-import { titlePattern } from "./patterns";
+import ScreenLayout from "./ScreenLayout";
+import ContinueButton from "./ContinueButton";
+import OptionButton from "./OptionButton";
 
 // SCREEN 1: NAME
 
@@ -18,74 +19,67 @@ function NameGreeting({ onContinue }) {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-black font-title text-neutral-200">
-      <Background pattern={titlePattern} />
+    <ScreenLayout>
+      <h1 className="px-[3vw] pt-[2vw] text-[10vw] font-light leading-none">
+        FIT SENSE
+      </h1>
 
-      <div className="relative z-10">
-        <h1 className="px-[3vw] pt-[2vw] text-[10vw] font-light leading-none">
-          FIT SENSE
-        </h1>
+      <div className="ml-[35vw] mt-[8vh] max-w-md px-4">
+        <h2 className="text-xl md:text-2xl">
+          Let's start with the introduction! What's your name?
+        </h2>
 
-        <div className="ml-[35vw] mt-[8vh] max-w-md px-4">
-          <h2 className="text-xl md:text-2xl">
-            Let's start with the introduction! What's your name?
-          </h2>
+        <input
+          className="mt-4 w-full border-b-2 border-neutral-200 bg-transparent py-2 text-xl text-white outline-none placeholder:text-neutral-500"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Type your name"
+        />
 
-          <input
-            className="mt-4 w-full border-b-2 border-neutral-200 bg-transparent py-2 text-xl text-white outline-none placeholder:text-neutral-500"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Type your name"
-          />
-
-          <div className="mt-6 flex justify-end">
-            {name.trim() !== "" && (
-              <button
-                className="border-2 border-neutral-200 px-6 py-2 text-lg hover:bg-neutral-200 hover:text-black"
-                onClick={handleClick}
-              >
-                Continue
-              </button>
-            )}
-          </div>
-        </div>
+        <ContinueButton
+          show={name.trim() !== ""}
+          onClick={handleClick}
+        />
       </div>
-    </div>
+    </ScreenLayout>
   );
 }
 
 
 // SCREEN 2: INFORMATION
 
-function Information({ name, onContinue }) {
-  const [age, setAge] = useState("");
-  const [weight, setWeight] = useState("");
-  const [height, setHeight] = useState("");
+function Information({
+  name,
+  age,
+  setAge,
+  weight,
+  setWeight,
+  feet,
+  setFeet,
+  inches,
+  setInches,
+  onContinue
+}) {
+  const inputClass =
+    "mt-2 w-full border-b-2 border-neutral-200 bg-transparent py-2 text-xl text-white outline-none placeholder:text-neutral-500";
 
-  function handleContinue() {
-    if (
-      age.trim() === "" ||
-      weight.trim() === "" ||
-      height.trim() === ""
-    ) {
-      return;
-    }
-
-    onContinue();
-  }
+  const canContinue =
+    Number(age) > 0 && Number(weight) > 0 && Number(feet) > 0;
 
   return (
-    <div className="information-screen">
-      <h1>Welcome, {name}!</h1>
+    <ScreenLayout>
+      <h1 className="px-[3vw] pt-[2vw] text-[6vw] font-light leading-none">
+        Welcome, {name}!
+      </h1>
 
-      <h2>Enter Your Information</h2>
+      <div className="ml-[35vw] mt-[4vh] max-w-md px-4">
+        <h2 className="text-xl md:text-2xl">Enter Your Information</h2>
 
-      <div className="information-inputs">
-        <label>
-          Age:
+        <label className="mt-6 block text-lg">
+          Age
           <input
-            className="text-input"
+            className={inputClass}
             type="number"
             value={age}
             onChange={(event) => setAge(event.target.value)}
@@ -93,10 +87,10 @@ function Information({ name, onContinue }) {
           />
         </label>
 
-        <label>
-          Weight:
+        <label className="mt-6 block text-lg">
+          Weight (lbs)
           <input
-            className="text-input"
+            className={inputClass}
             type="number"
             value={weight}
             onChange={(event) => setWeight(event.target.value)}
@@ -104,30 +98,34 @@ function Information({ name, onContinue }) {
           />
         </label>
 
-        <label>
-          Height:
-          <input
-            className="text-input"
-            type="number"
-            value={height}
-            onChange={(event) => setHeight(event.target.value)}
-            placeholder="Enter your height"
-          />
-        </label>
-      </div>
+        <p className="mt-6 text-lg">What is your height?</p>
+        <div className="flex gap-4">
+          <label className="flex-1 text-lg">
+            Feet
+            <input
+              className={inputClass}
+              type="number"
+              value={feet}
+              onChange={(event) => setFeet(event.target.value)}
+              placeholder="Feet"
+            />
+          </label>
 
-      <button
-        className="continue-button"
-        onClick={handleContinue}
-        disabled={
-          age.trim() === "" ||
-          weight.trim() === "" ||
-          height.trim() === ""
-        }
-      >
-        Continue
-      </button>
-    </div>
+          <label className="flex-1 text-lg">
+            Inches
+            <input
+              className={inputClass}
+              type="number"
+              value={inches}
+              onChange={(event) => setInches(event.target.value)}
+              placeholder="Inches"
+            />
+          </label>
+        </div>
+
+        <ContinueButton show={canContinue} onClick={onContinue} />
+      </div>
+    </ScreenLayout>
   );
 }
 
@@ -159,37 +157,32 @@ function NextScreen({ goal, setGoal, onContinue }) {
   ];
 
   return (
-    <div className="goal-screen">
-      <h1>What's Your Fitness Goal?</h1>
+    <ScreenLayout>
+      <h1 className="px-[3vw] pt-[2vw] text-[6vw] font-light leading-none">
+        What's Your Fitness Goal?
+      </h1>
 
-      <div className="goal-grid">
+      <div className="ml-[35vw] mt-[4vh] max-w-md px-4">
         {goals.map((item) => (
-          <div className="goal-option" key={item.name}>
-            <button
-              className={`goal-button ${
-                goal === item.name ? "selected" : ""
-              }`}
+          <div className="mb-6 flex flex-col items-start" key={item.name}>
+            <OptionButton
+              label={item.name}
+              selected={goal === item.name}
               onClick={() => setGoal(item.name)}
-            >
-              {goal === item.name && "✓ "}
-              {item.name}
-            </button>
+            />
 
-            <p className="goal-description">
+            <p className="mt-2 text-sm text-neutral-300">
               {item.description}
             </p>
           </div>
         ))}
-      </div>
 
-      <button
-        className="continue-button"
-        onClick={onContinue}
-        disabled={!goal}
-      >
-        Continue
-      </button>
-    </div>
+        <ContinueButton
+          show={goal !== ""}
+          onClick={onContinue}
+        />
+      </div>
+    </ScreenLayout>
   );
 }
 
@@ -220,43 +213,34 @@ function Proficiency({
   ];
 
   return (
-    <div className="proficiency-screen">
-      <h1>What's Your Fitness Proficiency?</h1>
+    <ScreenLayout>
+      <h1 className="px-[3vw] pt-[2vw] text-[6vw] font-light leading-none">
+        What's Your Fitness Proficiency?
+      </h1>
 
-      <div className="proficiency-list">
+      <div className="ml-[35vw] mt-[4vh] max-w-md px-4">
         {proficiencies.map((level) => (
-          <div
-            className="proficiency-option"
-            key={level.name}
-          >
-            <button
-              className={`proficiency-button ${
-                proficiency === level.name ? "selected" : ""
-              }`}
+          <div className="mb-6 flex flex-col items-start" key={level.name}>
+            <OptionButton
+              label={level.name}
+              selected={proficiency === level.name}
               onClick={() => setProficiency(level.name)}
-            >
-              {proficiency === level.name && "✓ "}
-              {level.name}
-            </button>
+            />
 
-            <p className="proficiency-description">
+            <p className="mt-2 text-sm text-neutral-300">
               {level.description}
             </p>
           </div>
         ))}
-      </div>
 
-      <button
-        className="continue-button"
-        onClick={onContinue}
-        disabled={!proficiency}
-      >
-        Continue
-      </button>
-    </div>
+        <ContinueButton
+          show={proficiency !== ""}
+          onClick={onContinue}
+        />
+      </div>
+    </ScreenLayout>
   );
 }
-
 
 // SCREEN 5: WORKOUT DAYS
 
@@ -265,48 +249,42 @@ function WorkoutDays({
   setWorkoutDays,
   onContinue
 }) {
-  const days = [
-    "1 Day | ",
-    "2 Days |",
-    "3 Days |",
-    "4 Days |",
-    "5 Days |",
-    "6 Days |",
-    "7 Days |"
-  ];
+  const daysNumber = Number(workoutDays);
+  const isValid =
+    workoutDays !== "" &&
+    Number.isInteger(daysNumber) &&
+    daysNumber >= 1 &&
+    daysNumber <= 7;
 
   return (
-    <div className="goal-screen">
-      <h1>How Many Days Can You Work Out?</h1>
+    <ScreenLayout>
+      <h1 className="px-[3vw] pt-[2vw] text-[6vw] font-light leading-none">
+        How Many Days Can You Work Out?
+      </h1>
 
-      <p className="screen-description">
-        Choose how many days per week you are able to dedicate
-        to working out.
-      </p>
+      <div className="ml-[35vw] mt-[4vh] max-w-md px-4">
+        <p className="text-sm text-neutral-300">
+          Choose how many days per week you are able to dedicate
+          to working out.
+        </p>
 
-      <div className="days-grid">
-        {days.map((day) => (
-          <button
-            key={day}
-            className={`goal-button ${
-              workoutDays === day ? "selected" : ""
-            }`}
-            onClick={() => setWorkoutDays(day)}
-          >
-            {workoutDays === day && "✓ "}
-            {day}
-          </button>
-        ))}
+        <label className="mt-6 block text-lg">
+          Days per week
+          <input
+            className="mt-2 w-full border-b-2 border-neutral-200 bg-transparent py-2 text-xl text-white outline-none placeholder:text-neutral-500"
+            type="number"
+            value={workoutDays}
+            onChange={(event) => setWorkoutDays(event.target.value)}
+            placeholder="1 - 7"
+          />
+        </label>
+
+        <ContinueButton
+          show={isValid}
+          onClick={onContinue}
+        />
       </div>
-
-      <button
-        className="continue-button"
-        onClick={onContinue}
-        disabled={!workoutDays}
-      >
-        Continue
-      </button>
-    </div>
+    </ScreenLayout>
   );
 }
 
@@ -318,69 +296,45 @@ function WorkoutLocation({
   setWorkoutLocation,
   onContinue
 }) {
-  const locations = [
-    {
-      name: "Gym",
-      description:
-        "I have access to a gym and can use gym equipment for my workouts."
-    },
-    {
-      name: "Home",
-      description:
-        "I primarily work out at home with the equipment I have available."
-    },
-    {
-      name: "Both",
-      description:
-        "I can work out both at a gym and at home."
-    }
-  ];
+  const locations = ["Home", "Gym", "Both"];
 
   return (
-    <div className="proficiency-screen">
-      <h1>Where Do You Work Out?</h1>
+    <ScreenLayout>
+      <h1 className="px-[3vw] pt-[2vw] text-[6vw] font-light leading-none">
+        Where Do You Work Out?
+      </h1>
 
-      <div className="proficiency-list">
-        {locations.map((location) => (
-          <div
-            className="proficiency-option"
-            key={location.name}
-          >
-            <button
-              className={`proficiency-button ${
-                workoutLocation === location.name
-                  ? "selected"
-                  : ""
-              }`}
-              onClick={() =>
-                setWorkoutLocation(location.name)
-              }
-            >
-              {workoutLocation === location.name && "✓ "}
-              {location.name}
-            </button>
+      <div className="ml-[35vw] mt-[4vh] max-w-md px-4">
+        <div className="flex flex-wrap gap-4">
+          {locations.map((location) => (
+            <OptionButton
+              key={location}
+              label={location}
+              selected={workoutLocation === location}
+              onClick={() => setWorkoutLocation(location)}
+            />
+          ))}
+        </div>
 
-            <p className="proficiency-description">
-              {location.description}
-            </p>
-          </div>
-        ))}
+        <ContinueButton
+          show={workoutLocation !== ""}
+          onClick={onContinue}
+        />
       </div>
-
-      <button
-        className="continue-button"
-        onClick={onContinue}
-        disabled={!workoutLocation}
-      >
-        Continue
-      </button>
-    </div>
+    </ScreenLayout>
   );
 }
 
 
 // MAIN APP
-
+function ProfileItem({ label, value }) {
+  return (
+    <div className="mb-5">
+      <p className="text-sm text-neutral-400">{label}</p>
+      <p className="text-xl">{value}</p>
+    </div>
+  );
+}
 function App() {
   const [screen, setScreen] = useState(1);
 
@@ -389,6 +343,11 @@ function App() {
   const [proficiency, setProficiency] = useState("");
   const [workoutDays, setWorkoutDays] = useState("");
   const [workoutLocation, setWorkoutLocation] = useState("");
+  const [age, setAge] = useState("");
+  const [weight, setWeight] = useState("");
+  const [feet, setFeet] = useState("");
+  const [inches, setInches] = useState("");
+
 
   function handleNameContinue(nameFromScreen) {
     setName(nameFromScreen);
@@ -423,14 +382,22 @@ function App() {
     );
   }
 
-  if (screen === 2) {
-    return (
-      <Information
-        name={name}
-        onContinue={handleInformationContinue}
-      />
-    );
-  }
+if (screen === 2) {
+  return (
+    <Information
+      name={name}
+      age={age}
+      setAge={setAge}
+      weight={weight}
+      setWeight={setWeight}
+      feet={feet}
+      setFeet={setFeet}
+      inches={inches}
+      setInches={setInches}
+      onContinue={handleInformationContinue}
+    />
+  );
+}
 
   if (screen === 3) {
     return (
@@ -472,23 +439,38 @@ function App() {
     );
   }
 // grab the info you need on users here
+if (screen === 7) {
+  const height = `${feet} ft${inches !== "" ? ` ${inches} in` : ""}`;
 
-  if (screen === 7) {
-    return (
-      <div className="intro-screen">
-        <h1>FitSense Profile</h1>
-        <p>Name: {name}</p>
-        <p>Goal: {goal}</p>
-        <p>Proficiency: {proficiency}</p>
-        <p>Workout Days: {workoutDays}</p>
-        <p>Workout Location: {workoutLocation}</p>
+  return (
+    <ScreenLayout>
+      <h1 className="px-[3vw] pt-[2vw] text-[6vw] font-light leading-none">
+        FitSense Profile
+      </h1>
 
-        <h2>Your information has been saved!</h2>
+      <div className="ml-[35vw] mt-[4vh] max-w-3xl px-4">
+        <div className="flex gap-12">
+          <div className="flex-1">
+          <ProfileItem label="Name" value={name} />
+          <ProfileItem label="Age" value={age} />
+          <ProfileItem label="Weight" value={`${weight} lbs`} />
+          <ProfileItem label="Height" value={height} />
+        </div>
+
+        <div className="flex-1">
+          <ProfileItem label="Goal" value={goal} />
+          <ProfileItem label="Proficiency" value={proficiency} />
+          <ProfileItem label="Workout Days" value={workoutDays} />
+          <ProfileItem label="Workout Location" value={workoutLocation} />
+          </div>
+        </div>
+
+        <h2 className="mt-6 text-xl md:text-2xl">Your profile is ready!</h2>
       </div>
-    );
-  }
+    </ScreenLayout>
+  );
 }
-
+}
 // MOUNT TO DOM
 
 createRoot(document.getElementById("root")).render(
