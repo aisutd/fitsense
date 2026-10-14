@@ -1,69 +1,6 @@
-from datetime import datetime, timezone
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
-
-from app.database import get_supabase
-from app.main import app
-
-
-class FakeQuery:
-    """Mimics the subset of the supabase-py query builder used by the profiles router."""
-
-    def __init__(self, rows: dict):
-        self.rows = rows
-        self.op = None
-        self.payload = None
-        self.filters = {}
-
-    def upsert(self, row, on_conflict=None):
-        self.op, self.payload = "upsert", row
-        return self
-
-    def select(self, *_):
-        self.op = "select"
-        return self
-
-    def eq(self, column, value):
-        self.filters[column] = value
-        return self
-
-    def limit(self, _):
-        return self
-
-    def execute(self):
-        now = datetime.now(timezone.utc).isoformat()
-        if self.op == "upsert":
-            key = self.payload["user_id"]
-            existing = self.rows.get(key)
-            created_at = existing["created_at"] if existing else now
-            self.rows[key] = {**self.payload, "created_at": created_at, "updated_at": now}
-            return SimpleNamespace(data=[self.rows[key]])
-        matches = [r for r in self.rows.values() if all(r[k] == v for k, v in self.filters.items())]
-        return SimpleNamespace(data=matches)
-
-
-class FakeSupabase:
-    def __init__(self):
-        self.tables: dict[str, dict] = {}
-
-    def table(self, name):
-        return FakeQuery(self.tables.setdefault(name, {}))
-
-
-@pytest.fixture
-def fake_db():
-    db = FakeSupabase()
-    app.dependency_overrides[get_supabase] = lambda: db
-    yield db
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def client(fake_db):
-    return TestClient(app)
 
 
 SAMPLE = {
@@ -155,3 +92,36 @@ def test_missing_required_field_rejected(client, missing):
 def test_bad_uuid_rejected(client):
     assert client.put("/profiles/not-a-uuid", json=SAMPLE).status_code == 422
     assert client.get("/profiles/not-a-uuid").status_code == 422
+
+
+def test_name_saved_and_trimmed(client):
+    user_id = str(uuid4())
+    res = client.put(f"/profiles/{user_id}", json={**SAMPLE, "name": "  Rahul  "})
+    assert res.status_code == 200
+    assert res.json()["name"] == "Rahul"
+    assert client.get(f"/profiles/{user_id}").json()["name"] == "Rahul"
+
+
+def test_name_optional(client):
+    res = client.put(f"/profiles/{uuid4()}", json=SAMPLE)
+    assert res.status_code == 200
+    assert res.json()["name"] is None
+
+
+def test_empty_name_rejected(client):
+    assert client.put(f"/profiles/{uuid4()}", json={**SAMPLE, "name": "   "}).status_code == 422
+
+
+def test_workout_fields_synced_to_user_preferences(client, fake_db):
+    user_id = str(uuid4())
+    client.put(f"/profiles/{user_id}", json=SAMPLE)
+    prefs = fake_db.tables["user_preferences"][user_id]
+    assert prefs["workout_days_per_week"] == 4
+    assert prefs["workout_location"] == "gym"
+    assert prefs["preferred_workout_types"] == ["strength", "cardio"]
+
+    fake_db.tables["user_preferences"][user_id]["available_equipment"] = ["dumbbells"]
+    client.put(f"/profiles/{user_id}", json={**SAMPLE, "workout_frequency": 6})
+    prefs = fake_db.tables["user_preferences"][user_id]
+    assert prefs["workout_days_per_week"] == 6
+    assert prefs["available_equipment"] == ["dumbbells"]  # untouched by profile saves
