@@ -1,0 +1,282 @@
+{
+  "incline push-up": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "stable_support"
+    ]
+  },
+  "pushups": {
+    "minimum_level": "intermediate",
+    "required_equipment": []
+  },
+  "push-ups - close triceps position": {
+    "minimum_level": "advanced",
+    "required_equipment": []
+  },
+  "dumbbell bicep curl": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "dumbbells"
+    ]
+  },
+  "dumbbell floor press": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "dumbbells"
+    ]
+  },
+  "side lateral raise": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "dumbbells"
+    ]
+  },
+  "dumbbell shoulder press": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "dumbbells"
+    ]
+  },
+  "one-arm dumbbell row": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "dumbbells"
+    ]
+  },
+  "band pull apart": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "resistance_bands"
+    ]
+  },
+  "shoulder press - with bands": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "resistance_bands"
+    ]
+  },
+  "bodyweight squat": {
+    "minimum_level": "beginner",
+    "required_equipment": []
+  },
+  "butt lift (bridge)": {
+    "minimum_level": "beginner",
+    "required_equipment": []
+  },
+  "bodyweight walking lunge": {
+    "minimum_level": "intermediate",
+    "required_equipment": []
+  },
+  "single leg glute bridge": {
+    "minimum_level": "intermediate",
+    "required_equipment": []
+  },
+  "goblet squat": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "dumbbells"
+    ]
+  },
+  "standing dumbbell calf raise": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "dumbbells"
+    ]
+  },
+  "dumbbell lunges": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "dumbbells"
+    ]
+  },
+  "stiff-legged dumbbell deadlift": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "dumbbells"
+    ]
+  },
+  "plank": {
+    "minimum_level": "beginner",
+    "required_equipment": []
+  },
+  "crunches": {
+    "minimum_level": "beginner",
+    "required_equipment": []
+  },
+  "reverse crunch": {
+    "minimum_level": "beginner",
+    "required_equipment": []
+  },
+  "side bridge": {
+    "minimum_level": "intermediate",
+    "required_equipment": []
+  },
+  "russian twist": {
+    "minimum_level": "intermediate",
+    "required_equipment": []
+  },
+  "barbell bench press - medium grip": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "barbell",
+      "plates",
+      "bench"
+    ]
+  },
+  "barbell incline bench press - medium grip": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "barbell",
+      "plates",
+      "bench"
+    ]
+  },
+  "barbell curl": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "barbell",
+      "plates"
+    ]
+  },
+  "machine bench press": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "chest_press_machine"
+    ]
+  },
+  "machine shoulder (military) press": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "shoulder_press_machine"
+    ]
+  },
+  "wide-grip lat pulldown": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "cable_station"
+    ]
+  },
+  "seated cable rows": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "cable_station"
+    ]
+  },
+  "triceps pushdown": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "cable_station"
+    ]
+  },
+  "cable crossover": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "cable_station"
+    ]
+  },
+  "barbell squat": {
+    "minimum_level": "advanced",
+    "required_equipment": [
+      "barbell",
+      "plates",
+      "rack"
+    ]
+  },
+  "barbell hip thrust": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "barbell",
+      "plates",
+      "bench"
+    ]
+  },
+  "romanian deadlift": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "barbell",
+      "plates"
+    ]
+  },
+  "leg press": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "leg_press_machine"
+    ]
+  },
+  "leg extensions": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "leg_extension_machine"
+    ]
+  },
+  "lying leg curls": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "leg_curl_machine"
+    ]
+  },
+  "seated calf raise": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "calf_raise_machine"
+    ]
+  },
+  "cable crunch": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "cable_station"
+    ]
+  },
+  "rope jumping": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "jump_rope"
+    ]
+  },
+  "mountain climbers": {
+    "minimum_level": "beginner",
+    "required_equipment": []
+  },
+  "running, treadmill": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "treadmill"
+    ]
+  },
+  "walking, treadmill": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "treadmill"
+    ]
+  },
+  "bicycling, stationary": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "exercise_bike"
+    ]
+  },
+  "recumbent bike": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "exercise_bike"
+    ]
+  },
+  "elliptical trainer": {
+    "minimum_level": "beginner",
+    "required_equipment": [
+      "elliptical"
+    ]
+  },
+  "stairmaster": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "stairmaster"
+    ]
+  },
+  "rowing, stationary": {
+    "minimum_level": "intermediate",
+    "required_equipment": [
+      "rowing_machine"
+    ]
+  }
+}

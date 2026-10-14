@@ -1,4 +1,6 @@
 from pathlib import Path
+import json
+import sys
 
 def create_profile(filename):
     user_name = input("Enter your name: ")
@@ -7,6 +9,7 @@ def create_profile(filename):
             user_age = int(input("Enter your age: "))
             if user_age <= 0:
                 print("Age must be greater than zero.")
+                continue
             break
         except ValueError:
             print("Please print a valid whole number")
@@ -62,6 +65,7 @@ def create_profile(filename):
 
         except ValueError:
             print("Please enter a valid number.")
+    equipment = prompt_equipment()
     with open(filename, "w") as file:
         file.write(f"name: {user_name}\n")
         file.write(f"age: {user_age}\n")
@@ -71,6 +75,7 @@ def create_profile(filename):
         file.write(f"location: {location}\n")
         file.write(f"weight: {weight} lbs\n")
         file.write("points: 0\n")
+        file.write(f"equipment: {', '.join(equipment) or 'none'}\n")
 
     print("\nProfile saved successfully!")
 
@@ -180,126 +185,131 @@ def load_workout(filename):
 
     return workouts
 
-def determine_workout(profile, workouts):
-    # Get information from the saved profile
-    name = profile["name"]
-    age = profile["age"]
-    fitness = profile["fitness_level"].strip().lower()
+# Explicit demo metadata avoids parsing equipment requirements from display text.
+# Difficulty tags are provisional product choices, not suitability assessments.
+BASE_DIR = Path(__file__).resolve().parent
+EQUIPMENT_CHOICES = {
+    "dumbbells", "resistance_bands", "barbell", "plates", "bench", "rack",
+    "stable_support", "cable_station", "chest_press_machine",
+    "shoulder_press_machine", "leg_press_machine", "leg_extension_machine",
+    "leg_curl_machine", "calf_raise_machine", "treadmill", "exercise_bike",
+    "elliptical", "stairmaster", "rowing_machine", "jump_rope",
+}
+LEVEL_RANK = {"beginner": 0, "intermediate": 1, "advanced": 2}
+
+
+def parse_equipment(value):
+    if isinstance(value, str):
+        value = [item.strip().lower() for item in value.split(",") if item.strip()]
+    if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
+        raise ValueError("Equipment must be a list or comma-separated names.")
+    selected = {item.strip().lower() for item in value}
+    if "none" in selected:
+        if len(selected) > 1:
+            raise ValueError("Select none on its own, or list your equipment.")
+        selected = set()
+    unknown = selected - EQUIPMENT_CHOICES
+    if unknown:
+        raise ValueError(f"Unknown equipment: {', '.join(sorted(unknown))}")
+    return sorted(selected)
+
+
+def prompt_equipment():
+    print("Equipment choices: " + ", ".join(sorted(EQUIPMENT_CHOICES)))
+    while True:
+        try:
+            return parse_equipment(input("Available equipment (comma-separated, or none): "))
+        except ValueError as error:
+            print(error)
+
+
+def recommend_exercises(profile, workouts, catalog):
+    """Return up to three matching candidates per category, not a full prescription."""
+    level = profile["fitness_level"].strip().lower()
+    if level not in LEVEL_RANK:
+        raise ValueError("Fitness level must be Beginner, Intermediate, or Advanced.")
     goal = profile["goal"].strip().upper()
+    goal = {"BUILD MUSCLE": "BUILDING MUSCLE", "GENERAL FITNESS": "GENERAL BODY FITNESS"}.get(goal, goal)
     location = profile["location"].strip().upper()
-    weight = profile["weight"]
-    weight_unit = profile["weight_unit"]
-
-    # Match the goal names used in Workouts.txt
-    if goal == "BUILD MUSCLE":
-        goal = "BUILDING MUSCLE"
-    elif goal == "GENERAL FITNESS":
-        goal = "GENERAL BODY FITNESS"
-
-    # Validate the selected goal
-    if goal not in workouts:
-        print("Fitness goal not found.")
-        return
-
-    # Validate the selected location
-    if location not in workouts[goal]:
-        print("No workouts found for this goal and location.")
-        return
-
-    # Display user information
-    print("\n========== FIT-SENSE WORKOUT ==========")
-    print(f"Name: {name}")
-    print(f"Age: {age}")
-    print(f"Fitness level: {fitness.title()}")
-    print(f"Goal: {goal}")
-    print(f"Location: {location}")
-    print(f"Weight: {weight:g} {weight_unit}")
-    print(f"Workout days per week: {profile['days_per_week']}")
-
-    selected_workouts = workouts[goal][location]
-
-    # Display Upper Body and Lower Body workouts
-    for category in ["Upper Body", "Lower Body"]:
-        print(f"\n--- {category} ---")
-
-        exercises = selected_workouts.get(category, [])
-
-        if not exercises:
-            print("No exercises available for this category.")
-            continue
-
+    if goal not in workouts or location not in workouts[goal]:
+        raise ValueError("No exercise catalog for this goal and location.")
+    # Missing equipment on an old profile conservatively means no equipment.
+    available = set(parse_equipment(profile.get("equipment", "none")))
+    result = {}
+    for category, exercises in workouts[goal][location].items():
+        matches = []
         for exercise in exercises:
-            exercise_name = exercise["name"]
-            equipment = exercise["equipment"]
-
-            print(f"\nExercise: {exercise_name}")
-            print(f"Equipment: {equipment}")
-
-            # Cardio exercises use duration rather than reps
-            cardio_keywords = [
-                "running",
-                "walking",
-                "bicycling",
-                "bike",
-                "elliptical",
-                "stairmaster"
-            ]
-
-            if any(word in exercise_name.lower()
-                   for word in cardio_keywords):
-                print("Suggested duration: 10-20 minutes, as tolerated")
-
-            elif goal == "IMPROVE ENDURANCE":
-                print("Suggested reps: 12-15")
-
-            elif age < 18:
-                print("Suggested reps: 8-12, with appropriate supervision")
-
-            elif age >= 60:
-                print("Suggested reps: 8-12, as tolerated")
-
-            elif goal == "BUILDING MUSCLE":
-                if fitness == "beginner":
-                    print("Suggested reps: 8-12")
-                elif fitness == "intermediate":
-                    print("Suggested reps: 8-12")
-                else:
-                    print("Suggested reps: 6-12")
-
-            elif goal == "LOSE WEIGHT":
-                print("Suggested reps: 10-15")
-
-            else:
-                print("Suggested reps: 8-12")
-
-    print("\n======================================")
+            metadata = catalog.get(exercise["name"])
+            if metadata is None:
+                continue  # Unreviewed catalog entries are not silently assumed eligible.
+            rank = LEVEL_RANK[metadata["minimum_level"]]
+            required = set(metadata["required_equipment"])
+            if rank <= LEVEL_RANK[level] and required <= available:
+                matches.append({
+                    **exercise,
+                    **metadata,
+                    "reason": f"Matches {goal.title()}, is tagged {metadata['minimum_level']} or above, and all required equipment is available.",
+                })
+        # Prefer the closest difficulty, then name, so results are repeatable.
+        matches.sort(key=lambda item: (-LEVEL_RANK[item["minimum_level"]], item["name"]))
+        if matches:
+            result[category] = matches[:3]
+    return result
 
 
+def determine_workout(profile, workouts, catalog=None):
+    if catalog is None:
+        catalog = json.loads((BASE_DIR / "exercise_metadata.json").read_text())
+    selected = recommend_exercises(profile, workouts, catalog)
+    print("\n========== FIT-SENSE WORKOUT ==========")
+    print(f"Fitness level: {profile['fitness_level']}")
+    print(f"Goal: {profile['goal']} | Location: {profile['location']}")
+    print(f"Available equipment: {', '.join(parse_equipment(profile.get('equipment', 'none'))) or 'none'}")
+    print("Exercise candidates — difficulty tags are provisional.")
+    for category, exercises in selected.items():
+        print(f"\n--- {category} ---")
+        for exercise in exercises:
+            print(f"- {exercise['name']}")
+            print(f"  Required: {', '.join(exercise['required_equipment']) or 'none'}")
+            print(f"  Why: {exercise['reason']}")
+    if not selected:
+        print("No matching exercises. Update equipment or review the exercise catalog.")
+    return selected
 
-print("=== Welcome to Fit-sense ===")
-while True:
-    try:
-        choose = int(input(
-            "Create a new profile (1) or access an existing profile (2)? "
-        ))
 
-        if choose in [1, 2]:
+def demo(workouts):
+    base = {"fitness_level": "Beginner", "goal": "Building Muscle", "location": "HOME", "equipment": []}
+    comparisons = [
+        ("Baseline", base),
+        ("Change only fitness level", {**base, "fitness_level": "Intermediate"}),
+        ("Change only goal", {**base, "goal": "Improve Endurance"}),
+        ("Change only equipment", {**base, "equipment": ["dumbbells"]}),
+    ]
+    for label, profile in comparisons:
+        print(f"\nDEMO: {label}")
+        determine_workout(profile, workouts)
+
+
+def main():
+    workouts = load_workout(BASE_DIR / "Workout.txt")
+    if "--demo" in sys.argv:
+        demo(workouts)
+        return
+    print("=== Welcome to Fit-sense ===")
+    while True:
+        choose = input("Create a new profile (1) or access an existing profile (2)? ").strip()
+        if choose in {"1", "2"}:
             break
-
         print("Please enter 1 or 2.")
-
-    except ValueError:
-        print("Please enter a valid number.")
-
-if choose == 1:
-    create_profile("user_Profiles.txt")
-
-
-profile = load_profile("user_Profiles.txt")
-workouts = load_workout("Workouts.txt")
-
-determine_workout(profile, workouts)
+    profile_path = BASE_DIR / "user_Profiles.txt"
+    if choose == "1":
+        create_profile(profile_path)
+    profile = load_profile(profile_path)
+    if "equipment" not in profile:
+        print("This saved profile does not have equipment information yet.")
+        profile["equipment"] = prompt_equipment()
+    determine_workout(profile, workouts)
 
 
-
-
+if __name__ == "__main__":
+    main()

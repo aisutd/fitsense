@@ -1,2 +1,9 @@
-
-
+name: John Doe
+age: 76
+fitness_level: Beginner
+goal: General Body Fitness
+days_per_week: 2
+location: HOME
+weight: 272.0 lbs
+points: 0
+equipment: leg_extension_machine, leg_press_machine, rack, resistance_bands, shoulder_press_machine
