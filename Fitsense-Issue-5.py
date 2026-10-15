@@ -94,7 +94,7 @@ def load_profile(filename):
     profile["days_per_week"] = int(profile["days_per_week"])
     profile["points"] = int(profile["points"])
 
-    # Convert weight to a number and keep its unit
+
     weight_info = profile["weight"].split()
     profile["weight"] = float(weight_info[0])
     profile["weight_unit"] = (
@@ -185,8 +185,7 @@ def load_workout(filename):
 
     return workouts
 
-# Explicit demo metadata avoids parsing equipment requirements from display text.
-# Difficulty tags are provisional product choices, not suitability assessments.
+
 BASE_DIR = Path(__file__).resolve().parent
 EQUIPMENT_CHOICES = {
     "dumbbells", "resistance_bands", "barbell", "plates", "bench", "rack",
@@ -233,7 +232,6 @@ def recommend_exercises(profile, workouts, catalog):
     location = profile["location"].strip().upper()
     if goal not in workouts or location not in workouts[goal]:
         raise ValueError("No exercise catalog for this goal and location.")
-    # Missing equipment on an old profile conservatively means no equipment.
     available = set(parse_equipment(profile.get("equipment", "none")))
     result = {}
     for category, exercises in workouts[goal][location].items():
@@ -241,7 +239,7 @@ def recommend_exercises(profile, workouts, catalog):
         for exercise in exercises:
             metadata = catalog.get(exercise["name"])
             if metadata is None:
-                continue  # Unreviewed catalog entries are not silently assumed eligible.
+                continue 
             rank = LEVEL_RANK[metadata["minimum_level"]]
             required = set(metadata["required_equipment"])
             if rank <= LEVEL_RANK[level] and required <= available:
@@ -250,7 +248,7 @@ def recommend_exercises(profile, workouts, catalog):
                     **metadata,
                     "reason": f"Matches {goal.title()}, is tagged {metadata['minimum_level']} or above, and all required equipment is available.",
                 })
-        # Prefer the closest difficulty, then name, so results are repeatable.
+
         matches.sort(key=lambda item: (-LEVEL_RANK[item["minimum_level"]], item["name"]))
         if matches:
             result[category] = matches[:3]
