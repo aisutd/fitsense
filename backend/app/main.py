@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from supabase import Client
 
 from app.database import get_supabase
-from app.routers import profiles
+from app.routers import gamification, profiles
 
 app = FastAPI()
 app.add_middleware(
@@ -15,6 +15,7 @@ app.add_middleware(
 )
 
 app.include_router(profiles.router)
+app.include_router(gamification.router)
 
 @app.get("/health")
 def health_check():
