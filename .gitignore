@@ -1,4 +1,10 @@
+node_modules/
+venv/
+.env
+.DS_Store
 .env
 __pycache__/
 .pytest_cache/
 .venv/
+node_modules/
+.DS_Store
