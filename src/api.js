@@ -54,6 +54,18 @@ export const logActivity = (userId, date, steps) => request("PUT", `/logs/${user
 export const logMeal = (userId, meal) => request("POST", `/logs/${userId}/meals`, meal);
 export const getGoals = (userId) => request("GET", `/goals/${userId}`);
 
+// Food logging: describe a meal -> review the estimate -> confirm.
+export const analyzeMeal = (userId, text, logDate, mealType) =>
+  request("POST", `/meals/${userId}/analyze`, { text, log_date: logDate, meal_type: mealType || null });
+export const listMeals = (userId, logDate, status) =>
+  request("GET", `/meals?user_id=${userId}&log_date=${logDate}${status ? `&status=${status}` : ""}`);
+export const updateMealItem = (mealId, itemId, changes) => request("PATCH", `/meals/${mealId}/items/${itemId}`, changes);
+export const addMealItem = (mealId, text) => request("POST", `/meals/${mealId}/items`, { text });
+export const deleteMealItem = (mealId, itemId) => request("DELETE", `/meals/${mealId}/items/${itemId}`);
+export const confirmMeal = (mealId) => request("POST", `/meals/${mealId}/confirm`);
+export const discardMeal = (mealId) => request("POST", `/meals/${mealId}/discard`);
+export const searchFoods = (q) => request("GET", `/foods/search?q=${encodeURIComponent(q)}`);
+
 // First readable validation message from a 422, for forms.
 export function validationMessage(error, fallback = "Something went wrong. Please try again.") {
   if (error.status === 422 && Array.isArray(error.detail)) {

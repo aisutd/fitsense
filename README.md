@@ -35,6 +35,7 @@ This is a generic starter configuration. The team can add project-specific depen
    - `003_gamification_points.sql`: the `xp_events` points history and the `award_points` function
    - `004_healthscore.sql`: HealthScore weights (30/25/25/20) and the workout/macro/activity goal columns it needs
    - `005_accounts.sql`: username/password accounts for the testing login
+   - `006_food_logging.sql`: FoodData Central search cache and the meal-review fields on `meal_items`
 3. Run `docker compose up -d --build`. The API is at http://localhost:8000, and interactive docs are at http://localhost:8000/docs.
 
 ### Profile endpoints
@@ -133,6 +134,35 @@ A category without enough data is left out and the overall score is marked `prov
 | `POST` | `/logs/{user_id}/meals` | Store a confirmed meal's nutrition (from the food-logging pipeline) |
 | `GET` / `PUT` | `/goals/{user_id}` | Current targets / set nutrition, sleep, step and active-minute goals |
 
+### Food logging
+
+Players describe a meal in plain text; the backend works out the ingredients and looks up nutrition in
+**USDA FoodData Central** (FDC). Nutrition values always come from FDC - the language model only finds foods and amounts.
+
+```
+"I had a 3-egg omelette for breakfast"
+  -> spaCy food model finds [3]-[egg] [omelette]         (backend/app/food/parser.py, trained in backend/ml/food_ner)
+  -> recipe: omelette = eggs + 1 tsp oil (assumed) + 20 g cheddar (assumed)   (app/food/data/recipes.json)
+  -> each food -> FDC id: ~200 common foods are pinned (app/food/data/foods.json); others are searched and ranked
+  -> grams from FDC portions ("1 large egg = 50 g"), nutrients = per-100 g value x grams / 100
+  -> saved as an *estimated* meal; the player adjusts amounts / swaps foods, then confirms
+```
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/meals/{user_id}/analyze` | `{"text", "log_date", "meal_type"?}` -> estimated meal with ingredients and totals |
+| `GET` | `/meals?user_id=&log_date=` | A user's meals for a day |
+| `GET` | `/meals/{meal_id}` | One meal |
+| `PATCH` | `/meals/{meal_id}/items/{item_id}` | Change `quantity` / `unit`, or swap to another `fdc_id` |
+| `POST` / `DELETE` | `/meals/{meal_id}/items[/{item_id}]` | Add or remove an ingredient |
+| `POST` | `/meals/{meal_id}/confirm` | Counts toward the HealthScore and awards `meal_logged` points |
+| `POST` | `/meals/{meal_id}/discard` | Throw the estimate away |
+| `GET` | `/foods/search?q=` | Search FDC (ranked, cached) to pick a food |
+
+- Needs `FDC_API_KEY` in `.env` (free: https://fdc.nal.usda.gov/api-key-signup). FDC results are cached in Supabase for 30 days.
+- Ingredients added by a recipe are marked `is_assumed`; weak matches or guessed amounts are marked `needs_review`.
+- The food model's training data, evaluation and retraining steps are in `backend/ml/food_ner/README.md`.
+
 ### Testing login
 
 `POST /auth/signup` and `POST /auth/login` take `{"username", "password"}` and return `{"user_id", "username", "has_profile"}`. Passwords are stored as salted scrypt hashes in `accounts`. The account's `user_id` is also the profile's id.
@@ -150,4 +180,6 @@ pytest                                        # unit tests, no Supabase needed
 python scripts/smoke_test_profiles.py         # live tests against the running backend + Supabase
 python scripts/smoke_test_gamification.py
 python scripts/seed_sample_users.py           # sample players + HealthScore checks against the spec's examples
+python scripts/smoke_test_food.py             # food logging end to end (real model, FDC and Supabase)
+python ml/food_ner/evaluate.py                # food model accuracy on the hand-written test set
 ```

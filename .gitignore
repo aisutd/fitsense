@@ -9,3 +9,5 @@ __pycache__/
 node_modules/
 .DS_Store
 dist/
+backend/ml/food_ner/corpus/
+backend/ml/food_ner/output/

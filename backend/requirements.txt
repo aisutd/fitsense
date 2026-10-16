@@ -1,3 +1,5 @@
 fastapi
 uvicorn[standard]
 supabase
+spacy>=3.8,<3.9
+httpx

@@ -1,5 +1,7 @@
+import json
 from datetime import datetime, timedelta, timezone
 from itertools import count
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -17,6 +19,8 @@ UPSERT_KEYS = {
     "user_gamification": ("user_id",),
     "sleep_logs": ("user_id", "sleep_date"),
     "activity_logs": ("user_id", "log_date"),
+    "fdc_foods": ("fdc_id",),
+    "fdc_search_cache": ("query",),
 }
 GENERATED_IDS = {
     "workout_logs": "workout_log_id",
@@ -29,6 +33,8 @@ GENERATED_IDS = {
     "health_score_config": "config_id",
     "xp_events": "event_id",
     "accounts": "user_id",
+    "meal_items": "meal_item_id",
+    "fdc_food_portions": "portion_id",
 }
 UNIQUE_COLUMNS = {"accounts": "username"}
 TIMESTAMP_COLUMNS = {"health_scores": "calculated_at"}
@@ -68,6 +74,10 @@ class FakeQuery:
 
     def update(self, values):
         self.op, self.payload = "update", values
+        return self
+
+    def delete(self):
+        self.op = "delete"
         return self
 
     # reads
@@ -112,19 +122,27 @@ class FakeQuery:
             self.rows[key] = {**existing, **self.payload, **stamps}
             return SimpleNamespace(data=[self.rows[key]])
         if self.op == "insert":
-            self._check_fk(self.payload)
-            unique = UNIQUE_COLUMNS.get(self.name)
-            if unique and any(r[unique] == self.payload[unique] for r in self.rows.values()):
-                raise APIError({"code": "23505", "message": "duplicate key value violates unique constraint"})
-            id_col = GENERATED_IDS[self.name]
-            row = {id_col: str(uuid4()), TIMESTAMP_COLUMNS.get(self.name, "created_at"): _now(), **self.payload}
-            self.rows[row[id_col]] = row
-            return SimpleNamespace(data=[row])
+            payloads = self.payload if isinstance(self.payload, list) else [self.payload]
+            inserted = []
+            for payload in payloads:
+                self._check_fk(payload)
+                unique = UNIQUE_COLUMNS.get(self.name)
+                if unique and any(r[unique] == payload[unique] for r in self.rows.values()):
+                    raise APIError({"code": "23505", "message": "duplicate key value violates unique constraint"})
+                id_col = GENERATED_IDS[self.name]
+                row = {id_col: str(uuid4()), TIMESTAMP_COLUMNS.get(self.name, "created_at"): _now(), **payload}
+                self.rows[row[id_col]] = row
+                inserted.append(row)
+            return SimpleNamespace(data=inserted)
 
         def matches(r):
             return all(c in r and r[c] is not None and op(str(r[c]), str(v)) for c, op, v in self.filters)
 
         result = [r for r in self.rows.values() if matches(r)]
+        if self.op == "delete":
+            for key in [k for k, r in self.rows.items() if matches(r)]:
+                del self.rows[key]
+            return SimpleNamespace(data=result)
         if self.op == "update":
             for r in result:
                 r.update(self.payload)
@@ -194,3 +212,46 @@ def fake_db():
 @pytest.fixture
 def client(fake_db):
     return TestClient(app)
+
+
+# --- FoodData Central fake (recorded responses in tests/fixtures/fdc) -------------------
+
+FDC_FIXTURES = Path(__file__).parent / "fixtures" / "fdc"
+
+
+class FakeFdc:
+    """Serves recorded FDC responses; counts calls so tests can check caching."""
+
+    def __init__(self):
+        self.calls = []
+
+    def food(self, fdc_id: int):
+        from app.food.fdc import parse_food
+        self.calls.append(("food", fdc_id))
+        path = FDC_FIXTURES / f"food_{fdc_id}.json"
+        if not path.exists():
+            from app.food.fdc import FdcError
+            raise FdcError("Food not found in FoodData Central")
+        return parse_food(json.loads(path.read_text(encoding="utf-8")))
+
+    def search_ranked(self, query: str):
+        from app.food.fdc import SearchHit, rank_hits
+        self.calls.append(("search", query))
+        path = FDC_FIXTURES / f"search_{query.replace(' ', '_')}.json"
+        if not path.exists():
+            return []
+        data = json.loads(path.read_text(encoding="utf-8"))
+        hits = []
+        for group in ("preferred", "fallback"):
+            for f in data[group]["foods"]:
+                kcal = next((n.get("value") for n in f["foodNutrients"] if n.get("nutrientNumber") == "208"), None)
+                hits.append(SearchHit(f["fdcId"], f["description"], f["dataType"], kcal, float(f.get("score") or 0)))
+        return rank_hits(query, hits)
+
+
+@pytest.fixture
+def fake_fdc():
+    from app.routers.meals import get_fdc
+    fdc = FakeFdc()
+    app.dependency_overrides[get_fdc] = lambda: fdc
+    yield fdc

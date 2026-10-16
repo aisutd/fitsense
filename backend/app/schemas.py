@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from enum import Enum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -293,3 +294,83 @@ class AccountOut(BaseModel):
     user_id: UUID
     username: str
     has_profile: bool = Field(description="False until onboarding has been completed")
+
+
+# --- Food logging ----------------------------------------------------------------
+
+UnitName = Literal[
+    "count", "g", "kg", "oz", "lb", "ml", "l", "tsp", "tbsp", "cup", "slice", "piece", "serving", "bowl",
+    "plate", "glass", "can", "bottle", "handful", "scoop", "bag", "bar", "small", "medium", "large",
+]
+
+
+class AnalyzeMealIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    text: str = Field(min_length=2, max_length=500, description="e.g. 'I had a 3-egg omelette for breakfast'")
+    log_date: date
+    meal_type: MealType | None = Field(default=None, description="Overrides the meal type detected in the text")
+
+
+class MealItemUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    quantity: float | None = Field(default=None, gt=0, le=5000)
+    unit: UnitName | None = None
+    fdc_id: int | None = Field(default=None, gt=0, description="Swap to this FoodData Central food")
+
+
+class MealItemAddIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    text: str = Field(min_length=2, max_length=100)
+    quantity: float | None = Field(default=None, gt=0, le=5000)
+    unit: UnitName | None = None
+
+
+class FoodRef(BaseModel):
+    fdc_id: int
+    description: str
+
+
+class FoodSearchHit(BaseModel):
+    fdc_id: int
+    description: str
+    data_type: str
+    calories_per_100g: float | None
+
+
+class MealItemOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    meal_item_id: UUID
+    ingredient_text: str
+    food: FoodRef | None
+    quantity: float
+    unit: str | None
+    grams: float | None
+    portion_label: str | None
+    is_assumed: bool
+    needs_review: bool
+    match_confidence: float | None
+    source_dish: str | None
+    calories: float | None
+    protein_g: float | None
+    carbs_g: float | None
+    fat_g: float | None
+    alternatives: list[FoodSearchHit]
+    unit_options: list[str]
+
+
+class MealOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    meal_id: UUID
+    user_id: UUID
+    log_date: date
+    meal_type: str | None
+    raw_text: str | None
+    display_name: str | None
+    status: str
+    totals: dict[str, float]
+    items: list[MealItemOut]

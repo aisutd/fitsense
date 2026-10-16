@@ -1,0 +1,27 @@
+{
+  "_about": "Dishes broken into adjustable ingredients. Each ingredient names a food in foods.json. Amounts are typical single servings and are shown to the player as 'assumed' until they adjust them. If the player mentions an ingredient ('3-egg omelette', 'omelette with feta'), their amount/food replaces the default. Dishes not listed here are looked up in FoodData Central as one item.",
+  "recipes": {
+    "omelette":               [{"food": "egg", "quantity": 2, "unit": "large"}, {"food": "olive oil", "quantity": 1, "unit": "tsp"}, {"food": "cheddar cheese", "quantity": 20, "unit": "g"}],
+    "scrambled eggs":         [{"food": "egg", "quantity": 2, "unit": "large"}, {"food": "butter", "quantity": 1, "unit": "tsp"}, {"food": "milk", "quantity": 1, "unit": "tbsp"}],
+    "fried egg":              [{"food": "egg", "quantity": 1, "unit": "large"}, {"food": "olive oil", "quantity": 1, "unit": "tsp"}],
+    "avocado toast":          [{"food": "sourdough bread", "quantity": 1, "unit": "slice"}, {"food": "avocado", "quantity": 0.5, "unit": null}, {"food": "olive oil", "quantity": 1, "unit": "tsp"}],
+    "french toast":           [{"food": "white bread", "quantity": 2, "unit": "slice"}, {"food": "egg", "quantity": 1, "unit": "large"}, {"food": "milk", "quantity": 2, "unit": "tbsp"}, {"food": "butter", "quantity": 1, "unit": "tsp"}, {"food": "maple syrup", "quantity": 1, "unit": "tbsp"}],
+    "grilled cheese":         [{"food": "white bread", "quantity": 2, "unit": "slice"}, {"food": "american cheese", "quantity": 2, "unit": "slice"}, {"food": "butter", "quantity": 2, "unit": "tsp"}],
+    "peanut butter sandwich": [{"food": "white bread", "quantity": 2, "unit": "slice"}, {"food": "peanut butter", "quantity": 2, "unit": "tbsp"}, {"food": "jam", "quantity": 1, "unit": "tbsp"}],
+    "ham sandwich":           [{"food": "white bread", "quantity": 2, "unit": "slice"}, {"food": "ham", "quantity": 60, "unit": "g"}, {"food": "american cheese", "quantity": 1, "unit": "slice"}, {"food": "mayonnaise", "quantity": 1, "unit": "tbsp"}],
+    "turkey sandwich":        [{"food": "whole wheat bread", "quantity": 2, "unit": "slice"}, {"food": "turkey", "quantity": 60, "unit": "g"}, {"food": "lettuce", "quantity": 0.25, "unit": "cup"}, {"food": "tomato", "quantity": 2, "unit": "slice"}, {"food": "mayonnaise", "quantity": 1, "unit": "tbsp"}],
+    "tuna sandwich":          [{"food": "white bread", "quantity": 2, "unit": "slice"}, {"food": "tuna", "quantity": 85, "unit": "g"}, {"food": "mayonnaise", "quantity": 1, "unit": "tbsp"}],
+    "blt":                    [{"food": "white bread", "quantity": 2, "unit": "slice"}, {"food": "bacon", "quantity": 3, "unit": "slice"}, {"food": "lettuce", "quantity": 0.25, "unit": "cup"}, {"food": "tomato", "quantity": 2, "unit": "slice"}, {"food": "mayonnaise", "quantity": 1, "unit": "tbsp"}],
+    "quesadilla":             [{"food": "tortilla", "quantity": 1, "unit": null}, {"food": "cheddar cheese", "quantity": 50, "unit": "g"}],
+    "breakfast burrito":      [{"food": "tortilla", "quantity": 1, "unit": null}, {"food": "egg", "quantity": 2, "unit": "large"}, {"food": "cheddar cheese", "quantity": 30, "unit": "g"}, {"food": "salsa", "quantity": 2, "unit": "tbsp"}],
+    "chicken and rice":       [{"food": "chicken breast", "quantity": 150, "unit": "g"}, {"food": "white rice", "quantity": 1, "unit": "cup"}, {"food": "olive oil", "quantity": 1, "unit": "tsp"}],
+    "stir fry":               [{"food": "chicken breast", "quantity": 120, "unit": "g"}, {"food": "mixed vegetables", "quantity": 1, "unit": "cup"}, {"food": "white rice", "quantity": 1, "unit": "cup"}, {"food": "vegetable oil", "quantity": 1, "unit": "tbsp"}, {"food": "soy sauce", "quantity": 1, "unit": "tbsp"}],
+    "garden salad":           [{"food": "lettuce", "quantity": 2, "unit": "cup"}, {"food": "tomato", "quantity": 0.5, "unit": "cup"}, {"food": "cucumber", "quantity": 0.5, "unit": "cup"}, {"food": "carrot", "quantity": 0.25, "unit": "cup"}, {"food": "salad dressing", "quantity": 2, "unit": "tbsp"}],
+    "yogurt parfait":         [{"food": "greek yogurt", "quantity": 1, "unit": "cup"}, {"food": "granola", "quantity": 0.25, "unit": "cup"}, {"food": "blueberries", "quantity": 0.5, "unit": "cup"}, {"food": "honey", "quantity": 1, "unit": "tsp"}],
+    "cereal with milk":       [{"food": "cereal", "quantity": 1, "unit": "cup"}, {"food": "milk", "quantity": 1, "unit": "cup"}],
+    "protein shake":          [{"food": "protein powder", "quantity": 1, "unit": "scoop"}, {"food": "milk", "quantity": 1, "unit": "cup"}],
+    "smoothie":               [{"food": "banana", "quantity": 1, "unit": null}, {"food": "strawberries", "quantity": 0.5, "unit": "cup"}, {"food": "yogurt", "quantity": 0.5, "unit": "cup"}, {"food": "milk", "quantity": 0.5, "unit": "cup"}],
+    "spaghetti bolognese":    [{"food": "pasta", "quantity": 1.5, "unit": "cup"}, {"food": "ground beef", "quantity": 100, "unit": "g"}, {"food": "tomato sauce", "quantity": 0.5, "unit": "cup"}, {"food": "parmesan", "quantity": 1, "unit": "tbsp"}],
+    "fruit salad":            [{"food": "strawberries", "quantity": 0.5, "unit": "cup"}, {"food": "grapes", "quantity": 0.5, "unit": "cup"}, {"food": "pineapple", "quantity": 0.5, "unit": "cup"}]
+  }
+}

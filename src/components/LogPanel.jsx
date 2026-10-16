@@ -1,6 +1,7 @@
 import { useState } from "react";
 import PixelIcon from "./PixelIcon";
 import { ICONS } from "../icons";
+import MealLogger from "./MealLogger";
 import { localToday, logActivity, logMeal, logSleep, logWorkout, validationMessage } from "../api";
 
 // Quick logging on the HealthScore page. Each tab feeds one category; after a
@@ -45,6 +46,7 @@ function LogPanel({ userId, onLogged }) {
   const [steps, setSteps] = useState("");
   const [meal, setMeal] = useState({ meal_type: "lunch", display_name: "", calories: "", protein_g: "", carbs_g: "", fat_g: "" });
   const [busy, setBusy] = useState(false);
+  const [manualMeal, setManualMeal] = useState(false);
   const [message, setMessage] = useState(null); // { ok, text }
 
   const active = TABS.find((t) => t.id === tab);
@@ -121,6 +123,9 @@ function LogPanel({ userId, onLogged }) {
         ))}
       </div>
 
+      {tab === "meal" && !manualMeal ? (
+        <MealLogger userId={userId} onLogged={onLogged} onManual={() => setManualMeal(true)} />
+      ) : (
       <form onSubmit={submit} className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <Field label={tab === "sleep" ? "Night of" : "Date"} type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} required />
 
@@ -174,8 +179,11 @@ function LogPanel({ userId, onLogged }) {
             <Field label="Carbs" type="number" inputMode="decimal" min={0} value={meal.carbs_g} onChange={setMealField("carbs_g")} suffix="g" placeholder="70" required />
             <Field label="Fat" type="number" inputMode="decimal" min={0} value={meal.fat_g} onChange={setMealField("fat_g")} suffix="g" placeholder="20" required />
             <p className="text-sm text-muted sm:col-span-2 lg:col-span-3">
-              Test entry: type the totals for now. Food logging will fill these in from the USDA food database. Nutrition needs
-              meals on 3 different days before it gets a score.
+              Typing totals by hand.{" "}
+              <button type="button" onClick={() => setManualMeal(false)} className="px-focus text-cyan hover:underline">
+                Describe the meal instead
+              </button>{" "}
+              to have them looked up in the USDA food database. Nutrition needs meals on 3 different days before it gets a score.
             </p>
           </>
         )}
@@ -200,6 +208,7 @@ function LogPanel({ userId, onLogged }) {
           </button>
         </div>
       </form>
+      )}
     </section>
   );
 }
