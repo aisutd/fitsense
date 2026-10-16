@@ -30,7 +30,7 @@ export function Logo() {
   return (
     <div className="flex items-center gap-3">
       <PixelIcon icon={ICONS.trophy} size={26} />
-      <span className="text-xl font-bold tracking-wider sm:text-2xl">FITSENSE</span>
+      <span className="font-title text-xl font-bold tracking-wider sm:text-2xl">FITSENSE</span>
     </div>
   );
 }

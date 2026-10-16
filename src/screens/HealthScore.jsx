@@ -1,12 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import CountUp from "../components/reactbits/CountUp";
 import PixelCard from "../components/reactbits/PixelCard";
 import PixelIcon from "../components/PixelIcon";
 import ScoreRing from "../components/ScoreRing";
+import LogPanel from "../components/LogPanel";
 import { Logo } from "../ScreenLayout";
 import { ICONS, levelIcon } from "../icons";
-import { CATEGORIES, RANGES, getHealthScore, scoreLabel } from "../data/healthScore";
+import { CATEGORIES, RANGES, scoreLabel, toViewModel } from "../data/healthScore";
+import { getHealthScore } from "../api";
 
 const CATEGORY_ICONS = {
   nutrition: ICONS.apple,
@@ -23,6 +25,12 @@ const GOAL_ICONS = {
 };
 const LEVEL_BARS = { Beginner: 1, Intermediate: 2, Advanced: 3 };
 const LOCATION_ICONS = { Home: ICONS.house, Gym: ICONS.dumbbell, Both: ICONS.swap };
+
+// Animated score, or "--" when the category has no data yet.
+function Score({ value, duration, delay }) {
+  if (value == null) return <span className="text-muted">--</span>;
+  return <CountUp to={value} duration={duration} delay={delay} />;
+}
 
 const rise = (delay = 0) => ({
   initial: { opacity: 0, y: 24 },
@@ -73,7 +81,7 @@ function CategoryCard({ category, data, side, delay }) {
             </h3>
           </div>
           <p className="mt-3 text-4xl font-bold">
-            <CountUp to={data.score} duration={1.2} delay={delay + 0.3} />
+            <Score value={data.score} duration={1.2} delay={delay + 0.3} />
             <span className="ml-1 text-xl text-muted">/100</span>
           </p>
           <p className="mt-2 text-muted">{data.note}</p>
@@ -111,7 +119,7 @@ function SummaryBar({ scores }) {
               {c.label}
             </p>
             <p className="text-2xl font-bold">
-              <CountUp to={scores[c.key].score} duration={1} delay={0.9} />
+              <Score value={scores[c.key].score} duration={1} delay={0.9} />
               <span className="text-base text-muted">/100</span>
             </p>
           </div>
@@ -169,15 +177,75 @@ function PlayerProfile({ profile, onEdit }) {
   );
 }
 
-function HealthScore({ profile, onEditProfile }) {
+const EMPTY = {
+  overall: null,
+  provisional: false,
+  missing: [],
+  disclaimer: "",
+  scores: Object.fromEntries(CATEGORIES.map((c) => [c.key, { score: null, available: false, note: "Loading..." }])),
+};
+
+function useHealthScore(userId, range) {
+  const [state, setState] = useState({ status: "loading", data: EMPTY, error: null });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState((s) => ({ ...s, status: "loading", error: null }));
+    getHealthScore(userId, range)
+      .then((result) => !cancelled && setState({ status: "ready", data: toViewModel(result), error: null }))
+      .catch((error) => !cancelled && setState({ status: "error", data: EMPTY, error }));
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, range, attempt]);
+
+  return { ...state, retry: () => setAttempt((n) => n + 1) };
+}
+
+function StatusBanner({ status, error, data, onRetry }) {
+  if (status === "error") {
+    return (
+      <div role="alert" className="px-frame mt-8 flex flex-wrap items-center justify-between gap-4 bg-night-800/85 px-5 py-4 [--frame:var(--color-nutrition)]">
+        <p className="text-lg">{error.message}</p>
+        <button type="button" onClick={onRetry} className="px-focus text-lg text-cyan hover:underline">
+          Try again
+        </button>
+      </div>
+    );
+  }
+  if (status !== "ready") return null;
+  if (data.overall == null) {
+    return (
+      <p className="px-frame mt-8 bg-night-800/85 px-5 py-4 text-lg">
+        No HealthScore yet. Log workouts, meals, sleep and activity to unlock it.
+      </p>
+    );
+  }
+  if (data.provisional) {
+    return (
+      <p className="px-frame mt-8 bg-night-800/85 px-5 py-4 text-lg [--frame:var(--color-gold)]">
+        <span className="text-gold">Provisional score:</span> based on the categories you've logged. Still missing:{" "}
+        {data.missing.join(", ")}.
+      </p>
+    );
+  }
+  return null;
+}
+
+function HealthScore({ userId, profile, onEditProfile, onLogout }) {
   const [range, setRange] = useState("week");
-  const { overall, scores } = useMemo(() => getHealthScore(range, profile), [range, profile]);
+  const { status, data, error, retry } = useHealthScore(userId, range);
+  const { overall, scores } = data;
   const byKey = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
 
   return (
     <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-8 sm:pt-10">
       <header className="flex items-center justify-between gap-4">
         <Logo />
+        <button type="button" onClick={onLogout} className="px-focus text-lg text-muted transition-colors hover:text-cyan">
+          Log out ⏻
+        </button>
       </header>
 
       <div className="mt-10 flex flex-wrap items-end justify-between gap-6">
@@ -192,6 +260,8 @@ function HealthScore({ profile, onEditProfile }) {
         </motion.div>
       </div>
 
+      <StatusBanner status={status} error={error} data={data} onRetry={retry} />
+
       <div className="mt-12 grid items-center gap-8 lg:grid-cols-[1fr_minmax(300px,420px)_1fr] lg:gap-x-16 lg:gap-y-0">
         <div className="grid gap-8 sm:grid-cols-2 lg:order-1 lg:grid-cols-1 lg:gap-24">
           <CategoryCard category={byKey.nutrition} data={scores.nutrition} side="left" delay={0.35} />
@@ -204,11 +274,11 @@ function HealthScore({ profile, onEditProfile }) {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: "spring", stiffness: 160, damping: 18, delay: 0.15 }}
         >
-          <ScoreRing key={range} scores={scores} categories={CATEGORIES}>
+          <ScoreRing key={`${range}-${status}`} scores={scores} categories={CATEGORIES}>
             <div className="flex flex-col items-center text-center">
               <PixelIcon icon={ICONS.trophy} size={48} className="h-auto w-8 drop-shadow-[0_0_12px_#f7b73380] sm:w-12" />
               <p className="mt-1 text-5xl font-bold leading-none sm:mt-2 sm:text-7xl">
-                <CountUp to={overall} duration={1.4} delay={0.4} />
+                <Score value={overall} duration={1.4} delay={0.4} />
               </p>
               <p className="text-base text-muted sm:text-xl">/100</p>
               <p className="text-base sm:mt-1 sm:text-xl">HealthScore</p>
@@ -217,7 +287,9 @@ function HealthScore({ profile, onEditProfile }) {
                 <span className="h-[6px] w-[6px] bg-cyan" />
                 <span className="h-[2px] flex-1 bg-night-500" />
               </div>
-              <p className="text-sm font-semibold text-activity sm:text-lg">{scoreLabel(overall)}</p>
+              <p className="text-sm font-semibold text-activity sm:text-lg">
+                {status === "loading" ? "Loading..." : scoreLabel(overall)}
+              </p>
             </div>
           </ScoreRing>
         </motion.div>
@@ -229,7 +301,10 @@ function HealthScore({ profile, onEditProfile }) {
       </div>
 
       <SummaryBar scores={scores} />
+      <LogPanel userId={userId} onLogged={retry} />
       <PlayerProfile profile={profile} onEdit={onEditProfile} />
+
+      {data.disclaimer && <p className="mt-10 text-center text-sm text-muted">{data.disclaimer}</p>}
     </main>
   );
 }
