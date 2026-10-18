@@ -1,13 +1,21 @@
+# Secrets (.env.example is committed)
+.env
+
+# Dependencies and builds
 node_modules/
+dist/
 venv/
-.env
-.DS_Store
-.env
+.venv/
+
+# Python caches
 __pycache__/
 .pytest_cache/
-.venv/
-node_modules/
-.DS_Store
-dist/
+
+# Food model training (regenerate with backend/ml/food_ner, see its README)
 backend/ml/food_ner/corpus/
 backend/ml/food_ner/output/
+
+# Local editor and tool settings
+.claude/
+.devcontainer/
+.DS_Store
