@@ -173,6 +173,7 @@
     {"name": "peanut butter sandwich", "aliases": ["pb sandwich", "pb&j", "pbj", "peanut butter and jelly sandwich"], "query": "peanut butter and jelly sandwich", "category": "dish", "fdc_id": 2707554, "fdc_description": "Peanut butter and jelly sandwich, NFS"},
     {"name": "ham sandwich", "aliases": [], "query": "ham sandwich", "category": "dish", "fdc_id": 2706968, "fdc_description": "Ham sandwich or sub, restaurant"},
     {"name": "turkey sandwich", "aliases": [], "query": "turkey sandwich", "category": "dish", "fdc_id": 2706985, "fdc_description": "Turkey sandwich or sub, restaurant"},
+    {"name": "egg sandwich", "aliases": ["fried egg sandwich"], "query": "egg sandwich on white bread", "category": "dish", "fdc_id": 2707307, "fdc_description": "Egg sandwich on white bread", "pinned": true},
     {"name": "tuna sandwich", "aliases": [], "query": "tuna salad sandwich", "category": "dish", "fdc_id": 2707038, "fdc_description": "Tuna salad sandwich wrap"},
     {"name": "chicken sandwich", "aliases": [], "query": "chicken sandwich", "category": "dish", "fdc_id": 2707000, "fdc_description": "Chicken fillet sandwich, NFS"},
     {"name": "blt", "aliases": ["blt sandwich"], "query": "bacon lettuce and tomato sandwich", "category": "dish", "fdc_id": 2706979, "fdc_description": "Bacon, lettuce, tomato sandwich on white", "pinned": true},

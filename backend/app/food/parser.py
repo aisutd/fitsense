@@ -16,7 +16,7 @@ from spacy.tokens import Doc, Span
 
 from app.food import lexicon
 from app.food.text import prepare_text
-from app.food.units import UNIT_ALIASES, normalize_unit, parse_quantity
+from app.food.units import SIZE_UNITS, UNIT_ALIASES, normalize_unit, parse_quantity
 
 MODEL_DIR = Path(__file__).parent / "model"
 
@@ -26,6 +26,17 @@ LEADING_WORDS = {"another", "my", "the", "more", "extra", "leftover", "leftovers
 # Measures from other logs that the model occasionally tags as FOOD ("slept 8 hours").
 NOT_FOOD = {"hour", "hours", "hr", "hrs", "minute", "minutes", "min", "mins", "mile", "miles", "km", "step", "steps",
             "rep", "reps", "set", "sets", "lap", "laps", "day", "days", "week", "weeks"}
+
+# Words the model sometimes pulls into the edge of a FOOD span ("[egg sandwich using]", "[chicken,]").
+EDGE_WORDS = {"using", "made", "with", "of", "from", "and", "or", "in", "on", "for", "containing", "contains",
+              "consisting", "plus", "which", "that", "had", "was", "&"}
+
+# "egg sandwich using 2 eggs and bread": what follows is what the dish was made of, not more food.
+COMPOSITION_WORDS = {"using", "made", "containing", "contains", "consisting"}
+CLAUSE_BREAKS = {".", ";", "!", "?", "then", "also", "later", "after", "afterwards", "plus"}
+
+# Food kinds where one replaces another in a recipe ("tofu stir fry" swaps the chicken).
+SWAPPABLE = ("protein", "dairy", "grain", "bread")
 
 SEPARATORS = {",", "and", "with", "&", "+", "plus", ";", "also", "then", "or", "/"}
 MEAL_WORDS = {
@@ -43,6 +54,8 @@ class ParsedItem:
     is_assumed: bool = False        # added by a recipe, not mentioned by the player
     source_dish: str | None = None  # recipe it came from
     fallback_food: str | None = None  # known food to use if "kimchi fried rice" isn't found as typed
+    composed: bool = False          # the player listed this dish's ingredients ("... using 2 eggs and bread")
+    part_of: str | None = None      # the dish (as typed) this ingredient was listed under
 
 
 @dataclass
@@ -132,21 +145,57 @@ def _new_item(span: Span, qty: float | None, unit: str | None) -> ParsedItem:
     return ParsedItem(text, qty, unit)
 
 
+def _clean_ents(doc: Doc) -> list[Span]:
+    """Trim punctuation and joining words off FOOD spans and drop non-foods ("slept 8 hours")."""
+    out = []
+    for e in doc.ents:
+        if e.label_ != "FOOD":
+            out.append(e)
+            continue
+        start, end = e.start, e.end
+        while start < end and (doc[start].is_punct or doc[start].lower_ in EDGE_WORDS):
+            start += 1
+        while end > start and (doc[end - 1].is_punct or doc[end - 1].lower_ in EDGE_WORDS):
+            end -= 1
+        if end > start and doc[start:end].text.lower() not in NOT_FOOD:
+            out.extend(_split_list(doc[start:end]))
+    return out
+
+
+def _split_list(span: Span) -> list[Span]:
+    """'[chicken and lettuce]' -> chicken, lettuce when both are known foods and the whole isn't
+    (so 'mac and cheese' and 'rice and beans' stay one food)."""
+    joins = [t.i for t in span if t.lower_ in ("and", "&", ",")]
+    if not joins or lexicon.find_food(span.text):
+        return [Span(span.doc, span.start, span.end, label="FOOD")]
+    parts, start = [], span.start
+    for j in joins:
+        parts.append((start, j))
+        start = j + 1
+    parts.append((start, span.end))
+    if all(e > s and lexicon.find_food(span.doc[s:e].text) for s, e in parts):
+        return [Span(span.doc, s, e, label="FOOD") for s, e in parts]
+    return [Span(span.doc, span.start, span.end, label="FOOD")]
+
+
 def extract_items(doc: Doc) -> list[ParsedItem]:
-    ents = [e for e in doc.ents if not (e.label_ == "FOOD" and e.text.lower() in NOT_FOOD)]
+    ents = _clean_ents(doc)
     items: list[ParsedItem] = []
     pending_qty: float | None = None
     pending_unit: str | None = None
     prev: Span | None = None       # previous entity
     last_food: ParsedItem | None = None
     last_food_span: Span | None = None
+    dish: ParsedItem | None = None  # dish whose ingredients are being listed
     skip_until = -1
 
     for i, ent in enumerate(ents):
+        gap = _gap(doc, prev.end, ent.start) if prev is not None else []
+        if any(t in CLAUSE_BREAKS for t in gap):
+            dish = None
         if i <= skip_until:
             prev = ent
             continue
-        gap = _gap(doc, prev.end, ent.start) if prev is not None else []
         if prev is not None and _has_separator(gap):
             pending_qty, pending_unit = None, None
 
@@ -185,6 +234,13 @@ def extract_items(doc: Doc) -> list[ParsedItem]:
         else:
             last_food = _new_item(ent, pending_qty, pending_unit)
             items.append(last_food)
+        if dish is not None and dish is not last_food:
+            last_food.part_of = dish.text
+        elif dish is None:
+            following = _gap(doc, ent.end, ents[i + 1].start if i + 1 < len(ents) else len(doc))
+            if any(t in COMPOSITION_WORDS for t in following):
+                last_food.composed = True
+                dish = last_food
         last_food_span = ent
         pending_qty, pending_unit = None, None
         prev = ent
@@ -227,7 +283,7 @@ def _expand(dish: lexicon.KnownFood, item: ParsedItem, modifier: ParsedItem | No
         target = next((ing.food for ing in recipe if mod_food and ing.food == mod_food.name), None)
         if target is None and mod_food:
             target = next((ing.food for ing in recipe if foods[ing.food].category == mod_food.category
-                           and mod_food.category in ("protein", "dairy", "grain", "bread")), None)
+                           and mod_food.category in SWAPPABLE), None)
         if target:
             replaces[target] = mod_item
         else:
@@ -247,28 +303,62 @@ def _expand(dish: lexicon.KnownFood, item: ParsedItem, modifier: ParsedItem | No
     return out + extras
 
 
+def _resolve(item: ParsedItem) -> list[ParsedItem]:
+    """One extracted item -> recipe ingredients, or itself with its canonical food name."""
+    recipes = lexicon.recipes()
+    known = lexicon.find_food(item.text)
+    if known and known.name in recipes:
+        return _expand(known, item, None)
+    if known:
+        return [replace(item, food_name=known.name)]
+    modifier, head = _split_head(item)
+    qty = item.quantity if item.quantity is not None else (modifier.quantity if modifier else None)
+    unit = item.unit or (modifier.unit if modifier else None)
+    if head and head.name in recipes:
+        return _expand(head, replace(item, quantity=None if modifier and modifier.quantity is not None and item.quantity is None else item.quantity), modifier)
+    if head:
+        # "kimchi fried rice": look up as typed, fall back to the known dish
+        return [ParsedItem(item.text, qty, unit, fallback_food=head.name)]
+    return [ParsedItem(item.text, qty, unit)]
+
+
+def _swaps_for(ingredient: ParsedItem, default: ParsedItem) -> bool:
+    """A listed ingredient replaces a recipe default of the same food or same kind ("rye bread" for "white bread")."""
+    if not default.food_name:
+        return False
+    if not ingredient.food_name:
+        # not in foods.json: "rye bread" still replaces the recipe's "whole wheat bread"
+        return ingredient.text.lower().split()[-1:] == default.food_name.split()[-1:]
+    if ingredient.food_name == default.food_name:
+        return True
+    foods = lexicon.foods()
+    category = foods[ingredient.food_name].category
+    return category in SWAPPABLE and category == foods[default.food_name].category
+
+
 def expand_recipes(items: list[ParsedItem]) -> list[ParsedItem]:
     """Expand dishes that have a recipe and resolve canonical food names."""
     out: list[ParsedItem] = []
-    recipes = lexicon.recipes()
+    dish_names: dict[str, str] = {}   # dish as typed -> name shown as source_dish
     for item in items:
-        known = lexicon.find_food(item.text)
-        if known and known.name in recipes:
-            out.extend(_expand(known, item, None))
-            continue
-        if known:
-            out.append(replace(item, food_name=known.name))
-            continue
-        modifier, head = _split_head(item)
-        qty = item.quantity if item.quantity is not None else (modifier.quantity if modifier else None)
-        unit = item.unit or (modifier.unit if modifier else None)
-        if head and head.name in recipes:
-            out.extend(_expand(head, replace(item, quantity=None if modifier and modifier.quantity is not None and item.quantity is None else item.quantity), modifier))
-        elif head:
-            # "kimchi fried rice": look up as typed, fall back to the known dish
-            out.append(ParsedItem(item.text, qty, unit, fallback_food=head.name))
-        else:
-            out.append(ParsedItem(item.text, qty, unit))
+        resolved = _resolve(item)
+        if item.composed:
+            recipe_dish = next((r.source_dish for r in resolved if r.source_dish), None)
+            dish_names[item.text] = recipe_dish or item.text
+            if recipe_dish is None:
+                continue    # "egg sandwich using 2 eggs and bread": the listed ingredients *are* the dish
+        if item.part_of in dish_names:
+            dish = dish_names[item.part_of]
+            for r in resolved:
+                default = next((o for o in out if o.is_assumed and o.source_dish == dish and _swaps_for(r, o)), None)
+                if default is not None:
+                    out.remove(default)
+                    if r.quantity is None:
+                        r.quantity, r.unit = default.quantity, default.unit
+                    elif r.unit is None and default.unit in SIZE_UNITS:
+                        r.unit = default.unit       # "2 eggs" in a recipe sized in large eggs
+                r.source_dish = r.source_dish or dish
+        out.extend(resolved)
 
     # An ingredient the player mentioned separately replaces the recipe's assumed default.
     explicit = {i.food_name for i in out if not i.is_assumed and i.food_name}
@@ -284,8 +374,9 @@ def detect_meal_type(text: str) -> str | None:
 
 
 def display_name(items: list[ParsedItem]) -> str:
-    dishes = list(dict.fromkeys(i.source_dish for i in items if i.source_dish))
-    names = dishes or list(dict.fromkeys(i.text for i in items if not i.is_assumed))
+    # dishes first, then foods that aren't part of a dish ("Omelette & Latte")
+    names = list(dict.fromkeys([i.source_dish for i in items if i.source_dish] +
+                               [i.text for i in items if not i.source_dish and not i.is_assumed]))
     if not names:
         return "Meal"
     title = " & ".join(n.title() for n in names[:2])

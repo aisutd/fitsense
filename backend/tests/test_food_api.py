@@ -46,6 +46,14 @@ def test_analyze_mockup_omelette(client, user, fake_db):
     assert 171287 in fake_db.tables["fdc_foods"]
 
 
+def test_dish_with_listed_ingredients_is_not_double_counted(client, user):
+    meal = analyze(client, user, "I had an egg sandwich using 2 eggs and 2 slices of white bread.").json()
+    assert meal["display_name"] == "Egg Sandwich" and len(meal["items"]) == 3
+    assert item(meal, "eggs")["grams"] == 100 and item(meal, "white bread")["grams"] == 56
+    assert item(meal, "butter")["is_assumed"] is True
+    assert meal["totals"]["calories"] == pytest.approx(327, abs=15)   # eggs 143 + bread 150 + butter ~34
+
+
 def test_fdc_foods_are_cached(client, user, fake_fdc):
     analyze(client, user, "a banana")
     calls = len(fake_fdc.calls)

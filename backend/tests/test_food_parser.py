@@ -98,3 +98,35 @@ def test_parse_ingredient(text, want):
     from app.food.parser import parse_ingredient
     got = parse_ingredient(text)
     assert (got.text, got.quantity, got.unit) == want
+
+
+def _summary(text):
+    return [(i.text, i.quantity, i.unit, i.is_assumed) for i in parse(text).items]
+
+
+def test_listed_ingredients_replace_the_dish():
+    # the player said what the sandwich was made of: no extra sandwich, no doubled eggs or bread
+    meal = parse("I had an egg sandwich using 2 eggs and 2 slices of white bread.")
+    assert meal.display_name == "Egg Sandwich"
+    assert sorted(_summary(meal.text)) == [("butter", 1, "tsp", True), ("eggs", 2, "large", False),
+                                           ("white bread", 2, "slice", False)]
+
+
+def test_listed_ingredients_of_an_unknown_dish_become_the_meal():
+    meal = parse("a wrap made with chicken and lettuce, then a coffee")
+    assert [i.text for i in meal.items] == ["chicken", "lettuce", "coffee"]
+    assert [i.source_dish for i in meal.items] == ["wrap", "wrap", None]
+
+
+def test_listed_ingredient_swaps_the_same_kind_of_food():
+    texts = [i.text for i in parse("a turkey sandwich made with rye bread and 100 g turkey").items]
+    assert "rye bread" in texts and "whole wheat bread" not in texts
+
+
+@pytest.mark.parametrize("text, foods", [
+    ("omelette made with 3 eggs", ["eggs", "olive oil", "cheddar cheese"]),       # not "omelette made"
+    ("burrito with chicken, rice and beans", ["burrito", "chicken", "rice and beans"]),
+    ("mac and cheese", ["mac and cheese"]),                                       # known dish stays whole
+])
+def test_food_span_edges(text, foods):
+    assert sorted(i.text for i in parse(text).items) == sorted(foods)
