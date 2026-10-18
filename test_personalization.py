@@ -13,8 +13,8 @@ class PersonalizationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.exercises = prototype.load_exercises()
-        cls.base = {'fitness_level': 'beginner', 'fitness_goal': 'build_muscle',
-                    'workout_location': 'home', 'equipment': []}
+        cls.base = {'age': 30, 'fitness_level': 'beginner', 'fitness_goal': 'build_muscle',
+                    'workout_location': 'home', 'workout_frequency': 3, 'equipment': []}
 
     def recommend(self, **changes):
         return prototype.recommend_exercises({**self.base, **changes}, self.exercises)
@@ -74,7 +74,7 @@ class PersonalizationTests(unittest.TestCase):
                         self.assertLessEqual(len(group), prototype.PER_GROUP)
 
     def test_profile_from_supabase_row(self):
-        row = {'user_id': 'u1', 'name': None, 'fitness_level': 'beginner', 'fitness_goal': 'lose_weight',
+        row = {'user_id': 'u1', 'name': None, 'age': 42, 'fitness_level': 'beginner', 'fitness_goal': 'lose_weight',
                'workout_location': 'home', 'workout_frequency': 3,
                'user_preferences': {'available_equipment': ['Dumbbell ', 'bands']},
                'user_gamification': None}
@@ -82,6 +82,44 @@ class PersonalizationTests(unittest.TestCase):
         self.assertEqual(profile['name'], 'u1')
         self.assertEqual(profile['equipment'], ['bands', 'dumbbell'])
         self.assertEqual(profile['points'], 0)
+        self.assertEqual(profile['age'], 42)
+
+    def prescribe(self, category, **changes):
+        return prototype.prescribe({**self.base, **changes}, {'category': category})
+
+    def test_age_groups(self):
+        self.assertEqual(prototype.age_group(13), 'youth')
+        self.assertEqual(prototype.age_group(17), 'youth')
+        self.assertEqual(prototype.age_group(18), 'adult')
+        self.assertEqual(prototype.age_group(64), 'adult')
+        self.assertEqual(prototype.age_group(65), 'senior')
+
+    def test_strength_reps_follow_age_and_level(self):
+        self.assertEqual(self.prescribe('strength'), '1-3 sets x 8-12 reps')
+        self.assertEqual(self.prescribe('strength', fitness_level='advanced'), '3-5 sets x 6-12 reps')
+        self.assertEqual(self.prescribe('strength', age=70), '1 set x 10-15 reps')
+        self.assertEqual(self.prescribe('strength', age=15), '1-2 sets x 10-15 reps')
+        self.assertEqual(self.prescribe('powerlifting', fitness_level='intermediate'), '3 sets x 6-12 reps')
+
+    def test_every_age_level_and_category_has_a_dose(self):
+        for age in (13, 30, 80):
+            for level in ('beginner', 'intermediate', 'advanced'):
+                for category in ('strength', 'powerlifting', 'olympic weightlifting', 'strongman',
+                                 'plyometrics', 'stretching', 'cardio'):
+                    self.assertTrue(self.prescribe(category, age=age, fitness_level=level))
+
+    def test_stretch_hold_is_longer_for_older_adults(self):
+        self.assertEqual(self.prescribe('stretching'), 'hold 10-30 s, 2-4 times')
+        self.assertEqual(self.prescribe('stretching', age=65), 'hold 30-60 s, 2-4 times')
+
+    def test_cardio_minutes_split_weekly_guideline_across_days(self):
+        self.assertEqual(self.prescribe('cardio'), '50 min moderate effort')  # 150 / 3 days
+        self.assertEqual(self.prescribe('cardio', fitness_level='intermediate', workout_frequency=5),
+                         '30-60 min moderate effort')
+        self.assertEqual(self.prescribe('cardio', fitness_level='advanced', workout_frequency=7),
+                         '20-21 min vigorous effort')
+        self.assertEqual(self.prescribe('cardio', workout_frequency=1), '60 min moderate effort')  # capped
+        self.assertIn('60 min', self.prescribe('cardio', age=14))
 
     def test_repeatable_and_does_not_change_input(self):
         before = json.dumps(self.base, sort_keys=True)

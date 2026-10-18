@@ -38,6 +38,65 @@ HOME_EQUIPMENT = {"bands", "dumbbell", "kettlebells", "medicine ball", "exercise
                   "foam roll", "other"}
 PER_GROUP = 3
 
+# Dose by age group and fitness level. Sources:
+# - HHS Physical Activity Guidelines for Americans, 2nd ed. (2018): weekly aerobic minutes for
+#   adults and older adults; 60 min/day of activity for ages 6-17.
+# - ACSM Position Stand, Progression Models in Resistance Training (2009): novices 1-3 sets of
+#   8-12 reps; intermediate/advanced multiple sets, mostly 6-12 reps.
+# - ACSM/AHA Physical Activity in Older Adults (2007): 1-3 sets of 10-15 reps at moderate effort.
+# - ACSM youth resistance training guidance: 1-3 sets of 6-15 reps, starting light at 10-15.
+# - ACSM flexibility guidance: hold 10-30 s (30-60 s for older adults), 2-4 times per stretch.
+# - Plyometrics have no federal guideline; these follow NSCA's low-volume starting advice.
+STRENGTH_DOSE = {
+    "youth":  {"beginner": ("1-2", "10-15"), "intermediate": ("2-3", "8-12"), "advanced": ("2-3", "6-12")},
+    "adult":  {"beginner": ("1-3", "8-12"), "intermediate": ("3", "6-12"), "advanced": ("3-5", "6-12")},
+    "senior": {"beginner": ("1", "10-15"), "intermediate": ("1-2", "10-15"), "advanced": ("2-3", "8-12")},
+}
+PLYOMETRIC_DOSE = {
+    "youth":  {"beginner": ("1-2", "5-8"), "intermediate": ("2-3", "6-8"), "advanced": ("3", "6-10")},
+    "adult":  {"beginner": ("2", "5-8"), "intermediate": ("3", "6-10"), "advanced": ("3-4", "8-12")},
+    "senior": {"beginner": ("1", "5"), "intermediate": ("1-2", "5-8"), "advanced": ("2", "6-8")},
+}
+STRETCH_HOLD = {"youth": "10-30 s", "adult": "10-30 s", "senior": "30-60 s"}
+# Weekly aerobic minutes (HHS). Beginners start at the minimum; advanced use vigorous effort.
+CARDIO_WEEKLY = {
+    "beginner": ("moderate", 150, 150),
+    "intermediate": ("moderate", 150, 300),
+    "advanced": ("vigorous", 75, 150),
+}
+SESSION_MINUTES = (20, 60)  # ACSM's per-session aerobic range
+
+
+def age_group(age):
+    if age < 18:
+        return "youth"
+    if age >= 65:
+        return "senior"
+    return "adult"
+
+
+def session_minutes(weekly, days):
+    low, high = SESSION_MINUTES
+    return min(max(round(weekly / days), low), high)
+
+
+def prescribe(profile, exercise):
+    """Sets, reps, hold time or minutes for one exercise, by the user's age group and level."""
+    group = age_group(profile["age"])
+    level = profile["fitness_level"]
+    category = exercise["category"]
+    if category == "stretching":
+        return f"hold {STRETCH_HOLD[group]}, 2-4 times"
+    if category == "cardio":
+        if group == "youth":
+            return "60 min moderate-to-vigorous (aim for 60 min of activity every day)"
+        effort, low, high = CARDIO_WEEKLY[level]
+        low, high = session_minutes(low, profile["workout_frequency"]), session_minutes(high, profile["workout_frequency"])
+        minutes = f"{low}" if low == high else f"{low}-{high}"
+        return f"{minutes} min {effort} effort"
+    sets, reps = (PLYOMETRIC_DOSE if category == "plyometrics" else STRENGTH_DOSE)[group][level]
+    return f"{sets} {'set' if sets == '1' else 'sets'} x {reps} reps"
+
 
 def load_env(filename):
     """Read KEY=value lines from .env without overriding variables already set."""
@@ -88,6 +147,7 @@ def profile_from_supabase_row(row):
     return {
         "user_id": row["user_id"],
         "name": row.get("name") or row["user_id"],
+        "age": int(row["age"]),
         "fitness_level": row["fitness_level"],
         "fitness_goal": row["fitness_goal"],
         "workout_location": row["workout_location"],
@@ -139,14 +199,16 @@ def recommend_exercises(profile, exercises):
 
 def print_workout(profile, selected):
     print("\n========== FIT-SENSE WORKOUT ==========")
-    print(f"{profile['name']} | {profile['points']} points")
+    print(f"{profile['name']} | Age {profile['age']} | {profile['points']} points")
     print(f"Level: {profile['fitness_level']} | Goal: {profile['fitness_goal']} | "
           f"Location: {profile['workout_location']} | {profile['workout_frequency']} days/week")
     print(f"Saved equipment: {', '.join(profile['equipment']) or 'none'}")
     for group, exercises in selected.items():
-        print(f"\n--- {group} ---")
+        # The cardio dose is the whole session's aerobic time, so the options are alternatives.
+        print(f"\n--- {group} (pick one) ---" if group == "Cardio" else f"\n--- {group} ---")
         for exercise in exercises:
-            print(f"- {exercise['name']} ({exercise['level']}, {exercise['equipment'] or 'no equipment'})")
+            print(f"- {exercise['name']} ({exercise['level']}, {exercise['equipment'] or 'no equipment'}): "
+                  f"{prescribe(profile, exercise)}")
     if not selected:
         print("No matching exercises. Add equipment in user_preferences or change the goal.")
 
