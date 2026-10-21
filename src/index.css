@@ -1,0 +1,195 @@
+@import "tailwindcss";
+@import "lenis/dist/lenis.css";
+
+/* Pixel-game palette (matches the HealthScore mockup). Tailwind turns these
+   into utilities like bg-night-900, text-nutrition, font-pixel. */
+@theme {
+  --font-pixel: "Pixelify Sans", ui-monospace, monospace;
+  --font-title: "Pixelify Sans", ui-monospace, monospace;
+
+  --color-night-950: #060a15;
+  --color-night-900: #0a1122;
+  --color-night-800: #10192f;
+  --color-night-700: #18233f;
+  --color-night-600: #26345a;
+  --color-night-500: #3a4a78;
+  --color-ink: #e8edff;
+  --color-muted: #94a3c8;
+
+  --color-nutrition: #ff5d6c;
+  --color-workouts: #4d8dff;
+  --color-activity: #42e08b;
+  --color-sleep: #a66bff;
+  --color-gold: #f7b733;
+  --color-cyan: #4fd8ff;
+}
+
+html,
+body {
+  background: var(--color-night-950);
+  color: var(--color-ink);
+  font-family: var(--font-pixel);
+}
+
+/* Hide the up/down arrows on number inputs */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ---------- Pixel frame: NES-style border with notched corners ----------
+   Four offset box-shadows draw the edges and leave the corners empty.
+   Set --frame to change the colour. Add .px-glow for a soft neon glow. */
+.px-frame {
+  --px: 3px;
+  --frame: var(--color-night-600);
+  box-shadow:
+    0 calc(var(--px) * -1) 0 0 var(--frame),
+    0 var(--px) 0 0 var(--frame),
+    calc(var(--px) * -1) 0 0 0 var(--frame),
+    var(--px) 0 0 0 var(--frame);
+}
+
+.px-frame.px-glow {
+  box-shadow:
+    0 calc(var(--px) * -1) 0 0 var(--frame),
+    0 var(--px) 0 0 var(--frame),
+    calc(var(--px) * -1) 0 0 0 var(--frame),
+    var(--px) 0 0 0 var(--frame),
+    0 0 26px -6px var(--frame),
+    inset 0 0 22px -12px var(--frame);
+}
+
+/* Chunky "pressable" game button: drops into its shadow when clicked. */
+.px-button {
+  --frame: var(--color-ink);
+  --shadow: var(--color-night-500);
+  position: relative;
+  transition: transform 90ms steps(2), background-color 120ms, color 120ms;
+  box-shadow:
+    0 -3px 0 0 var(--frame),
+    0 3px 0 0 var(--frame),
+    -3px 0 0 0 var(--frame),
+    3px 0 0 0 var(--frame),
+    0 9px 0 0 var(--shadow);
+}
+
+.px-button:active:not(:disabled) {
+  transform: translateY(5px);
+  box-shadow:
+    0 -3px 0 0 var(--frame),
+    0 3px 0 0 var(--frame),
+    -3px 0 0 0 var(--frame),
+    3px 0 0 0 var(--frame),
+    0 4px 0 0 var(--shadow);
+}
+
+.px-button:focus-visible,
+.px-focus:focus-visible {
+  outline: 3px dashed var(--color-cyan);
+  outline-offset: 7px;
+}
+
+/* React Bits PixelCard re-skinned as a pixel-framed HealthScore card */
+.pixel-card.hs-card {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--color-night-800) 88%, transparent);
+}
+
+.pixel-card.hs-card::after {
+  display: none;
+}
+
+/* ---------- Background animation ---------- */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+@keyframes drift {
+  from { transform: translateX(-18px); }
+  to { transform: translateX(18px); }
+}
+
+.star-twinkle {
+  animation: twinkle 3s steps(4) infinite;
+}
+
+.cloud-drift {
+  animation: drift 24s ease-in-out infinite alternate;
+}
+
+/* Faint CRT scanlines over everything */
+.scanlines::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.12) 3px
+  );
+}
+
+/* ---------- Screen transition (pixel dissolve) ---------- */
+@keyframes px-cover {
+  from { transform: scale(0); }
+  to { transform: scale(1.02); }
+}
+
+@keyframes px-reveal {
+  from { transform: scale(1.02); }
+  to { transform: scale(0); }
+}
+
+.px-cell {
+  position: absolute;
+  animation-duration: 220ms;
+  animation-timing-function: steps(4, end);
+  animation-fill-mode: both;
+}
+
+.px-cell[data-phase="covering"] { animation-name: px-cover; }
+.px-cell[data-phase="revealing"] { animation-name: px-reveal; }
+
+/* ---------- Score ring cells ---------- */
+@keyframes ring-pop {
+  from { opacity: 0; transform: scale(0.2); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.ring-cell {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ring-pop 260ms steps(3, end) both;
+}
+
+/* Blinking text cursor */
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.blink {
+  animation: blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-twinkle,
+  .cloud-drift,
+  .blink,
+  .ring-cell {
+    animation: none;
+  }
+}
