@@ -36,7 +36,10 @@ This is a generic starter configuration. The team can add project-specific depen
    - `004_healthscore.sql`: HealthScore weights (30/25/25/20) and the workout/macro/activity goal columns it needs
    - `005_accounts.sql`: username/password accounts for the testing login
    - `006_food_logging.sql`: FoodData Central search cache and the meal-review fields on `meal_items`
+   - `007_food_search.sql`: search index and `search_fdc_foods` function for the local USDA food copy
 3. Run `docker compose up -d --build`. The API is at http://localhost:8000, and interactive docs are at http://localhost:8000/docs.
+4. Load the USDA food data (once per Supabase project; about 30 seconds):
+   `docker compose run --rm backend python -m app.food.fdc_import`
 
 ### Profile endpoints
 
@@ -136,8 +139,13 @@ A category without enough data is left out and the overall score is marked `prov
 
 ### Food logging
 
-Players describe a meal in plain text; the backend works out the ingredients and looks up nutrition in
-**USDA FoodData Central** (FDC). Nutrition values always come from FDC - the language model only finds foods and amounts.
+Players either **type a food and pick it** from search-as-you-type suggestions, or **describe a meal** in plain text
+and the backend works out the ingredients. Either way nutrition comes from **USDA FoodData Central** (FDC) - the language
+model only finds foods and amounts.
+
+A copy of FDC lives in Supabase (`fdc_foods` / `fdc_food_portions`, about 13,500 foods from FNDDS, SR Legacy and
+Foundation), loaded by `python -m app.food.fdc_import` from USDA's public downloads. Search runs in Postgres (word prefixes
+and typo-tolerant trigram matching), so suggestions take ~0.1 s and the app makes no FDC API calls.
 
 ```
 "I had a 3-egg omelette for breakfast"
@@ -150,16 +158,20 @@ Players describe a meal in plain text; the backend works out the ingredients and
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/foods/suggest?q=` | Search-as-you-type: foods from our list first, then USDA matches (local copy only) |
+| `POST` | `/meals/{user_id}/start` | `{"log_date", "meal_type"?, "items": [{"fdc_id", "quantity"?, "unit"?}]}` -> estimated meal from picked foods |
 | `POST` | `/meals/{user_id}/analyze` | `{"text", "log_date", "meal_type"?}` -> estimated meal with ingredients and totals |
 | `GET` | `/meals?user_id=&log_date=` | A user's meals for a day |
 | `GET` | `/meals/{meal_id}` | One meal |
 | `PATCH` | `/meals/{meal_id}/items/{item_id}` | Change `quantity` / `unit`, or swap to another `fdc_id` |
-| `POST` / `DELETE` | `/meals/{meal_id}/items[/{item_id}]` | Add or remove an ingredient |
+| `POST` / `DELETE` | `/meals/{meal_id}/items[/{item_id}]` | Add (`{"text"}` typed, or `{"fdc_id"}` picked) or remove an ingredient |
 | `POST` | `/meals/{meal_id}/confirm` | Counts toward the HealthScore and awards `meal_logged` points |
 | `POST` | `/meals/{meal_id}/discard` | Throw the estimate away |
-| `GET` | `/foods/search?q=` | Search FDC (ranked, cached) to pick a food |
+| `GET` | `/foods/search?q=` | Search foods (ranked) to swap an ingredient |
 
-- Needs `FDC_API_KEY` in `.env` (free: https://fdc.nal.usda.gov/api-key-signup). FDC results are cached in Supabase for 30 days.
+- `FDC_API_KEY` is optional: with it, a food missing from the local copy is fetched from the FDC API (and cached);
+  without it those requests return `503` asking you to run the import.
+- When USDA publishes a new FNDDS or Foundation release, update `DATASETS` in `backend/app/food/fdc_import.py` and re-run it.
 - Ingredients added by a recipe are marked `is_assumed`; weak matches or guessed amounts are marked `needs_review`.
 - The food model's training data, evaluation and retraining steps are in `backend/ml/food_ner/README.md`.
 

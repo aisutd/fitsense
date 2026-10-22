@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from itertools import count
 from pathlib import Path
@@ -97,6 +98,10 @@ class FakeQuery:
         self.filters.append((column, lambda a, b: a <= b, value))
         return self
 
+    def in_(self, column, values):
+        self.filters.append((column, lambda a, b: a in b, [str(v) for v in values]))
+        return self
+
     def order(self, column, desc=False):
         self.order_by = (column, desc)
         return self
@@ -110,6 +115,13 @@ class FakeQuery:
             raise APIError({"code": "23503", "message": "violates foreign key constraint"})
 
     def execute(self):
+        if self.op == "upsert" and isinstance(self.payload, list):
+            rows = []
+            for payload in self.payload:
+                q = FakeQuery(self.db, self.name)
+                q.op, q.payload, q.on_conflict = "upsert", payload, self.on_conflict
+                rows += q.execute().data
+            return SimpleNamespace(data=rows)
         if self.op == "upsert":
             self._check_fk(self.payload)
             key = tuple(self.payload[c] for c in self.on_conflict)
@@ -136,7 +148,8 @@ class FakeQuery:
             return SimpleNamespace(data=inserted)
 
         def matches(r):
-            return all(c in r and r[c] is not None and op(str(r[c]), str(v)) for c, op, v in self.filters)
+            return all(c in r and r[c] is not None and op(str(r[c]), v if isinstance(v, list) else str(v))
+                       for c, op, v in self.filters)
 
         result = [r for r in self.rows.values() if matches(r)]
         if self.op == "delete":
@@ -189,6 +202,25 @@ class FakeRpc:
         }])
 
 
+class FakeSearchRpc:
+    """In-memory search_fdc_foods(): every word must start a word of the description (no typo matching)."""
+
+    def __init__(self, db: "FakeSupabase", params: dict):
+        self.db = db
+        self.params = params
+
+    def execute(self):
+        words = [w.lower() for w in self.params["words"] if w]
+        out = []
+        for r in self.db.tables.get("fdc_foods", {}).values():
+            desc_words = re.findall(r"[a-z0-9]+", r["description"].lower())
+            if r.get("calories_per_100g") is not None and words and all(
+                    any(d.startswith(w) for d in desc_words) for w in words):
+                out.append({k: r.get(k) for k in ("fdc_id", "description", "data_type", "calories_per_100g")})
+        out.sort(key=lambda r: len(r["description"]))
+        return SimpleNamespace(data=out[: self.params.get("max_results", 150)])
+
+
 class FakeSupabase:
     def __init__(self):
         self.tables: dict[str, dict] = {}
@@ -197,6 +229,8 @@ class FakeSupabase:
         return FakeQuery(self, name)
 
     def rpc(self, name, params):
+        if name == "search_fdc_foods":
+            return FakeSearchRpc(self, params)
         assert name == "award_points"
         return FakeRpc(self, params)
 
@@ -255,3 +289,12 @@ def fake_fdc():
     fdc = FakeFdc()
     app.dependency_overrides[get_fdc] = lambda: fdc
     yield fdc
+
+
+@pytest.fixture
+def usda_copy(fake_db):
+    """The local USDA copy, imported (with the real importer) from the recorded FDC foods."""
+    from app.food.fdc_import import import_foods
+    raws = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(FDC_FIXTURES.glob("food_*.json"))]
+    import_foods(fake_db, raws, log=lambda *_: None)
+    return fake_db

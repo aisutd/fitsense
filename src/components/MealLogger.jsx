@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import FoodSearch from "./FoodSearch";
 import {
   addMealItem,
   analyzeMeal,
@@ -8,11 +9,12 @@ import {
   listMeals,
   localToday,
   searchFoods,
+  startMeal,
   updateMealItem,
   validationMessage,
 } from "../api";
 
-// Describe a meal in words -> review the estimated ingredients -> confirm.
+// Pick foods as you type (USDA search) or describe a meal in words -> review the ingredients -> confirm.
 // Nutrition comes from USDA FoodData Central via the backend; nothing is estimated here.
 
 const MEAL_TYPES = ["", "breakfast", "lunch", "dinner", "snack"];
@@ -34,10 +36,12 @@ function FoodPicker({ item, onPick, busy }) {
   const [query, setQuery] = useState(item.ingredient_text);
   const [results, setResults] = useState(item.alternatives ?? []);
   const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
 
-  async function search(event) {
-    event.preventDefault();
+  async function search() {
+    if (query.trim().length < 2) return;
     setSearching(true);
+    setSearched(true);
     try {
       setResults(await searchFoods(query));
     } catch {
@@ -49,19 +53,19 @@ function FoodPicker({ item, onPick, busy }) {
 
   return (
     <div className="mt-3 bg-night-900/70 p-3">
-      <form onSubmit={search} className="flex gap-2">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="px-frame min-w-0 flex-1 bg-night-900 px-2 py-1 text-lg outline-none focus:[--frame:var(--color-cyan)]"
-          aria-label="Search USDA foods"
-        />
-        <button type="submit" className="px-focus px-3 text-cyan hover:underline" disabled={searching}>
+      <div className="flex gap-2">
+        <div className="min-w-0 flex-1">
+          <FoodSearch value={query} onChange={setQuery} onPick={(s) => onPick(s.fdc_id)} onEnter={search}
+            label="Search USDA foods" className="py-1 text-lg" autoFocus />
+        </div>
+        <button type="button" onClick={search} className="px-focus px-3 text-cyan hover:underline" disabled={searching}>
           {searching ? "..." : "Search"}
         </button>
-      </form>
+      </div>
       <ul className="mt-2 max-h-56 overflow-y-auto">
-        {results.length === 0 && <li className="py-1 text-muted">No matches. Try different words.</li>}
+        {results.length === 0 && (
+          <li className="py-1 text-muted">{searched ? "No matches. Try different words." : "Type to search USDA foods."}</li>
+        )}
         {results.map((r) => (
           <li key={r.fdc_id}>
             <button
@@ -192,23 +196,35 @@ function MealLogger({ userId, onLogged, onManual }) {
   }
 
   async function analyze(event) {
-    event.preventDefault();
+    event?.preventDefault();
     if (text.trim().length < 2 || busy) return;
     const result = await run(() => analyzeMeal(userId, text.trim(), date, mealType));
     if (result) setMeal(result);
   }
 
+  // A food picked from the dropdown starts the meal with exactly that USDA food.
+  async function startWith(suggestion) {
+    const m = await run(() => startMeal(userId, date, mealType, [{ fdc_id: suggestion.fdc_id }]));
+    if (m) {
+      setMeal(m);
+      setText("");
+    }
+  }
+
   const change = (item, changes) => run(() => updateMealItem(meal.meal_id, item.meal_item_id, changes)).then((m) => m && setMeal(m));
   const remove = (item) => run(() => deleteMealItem(meal.meal_id, item.meal_item_id)).then((m) => m && setMeal(m));
 
-  async function add(event) {
-    event.preventDefault();
-    if (newItem.trim().length < 2) return;
-    const m = await run(() => addMealItem(meal.meal_id, newItem.trim()));
+  async function add(item) {
+    const m = await run(() => addMealItem(meal.meal_id, item));
     if (m) {
       setMeal(m);
       setNewItem("");
     }
+  }
+
+  function addTyped(event) {
+    event?.preventDefault();
+    if (newItem.trim().length >= 2 && !busy) add({ text: newItem.trim() });
   }
 
   async function confirm() {
@@ -228,20 +244,23 @@ function MealLogger({ userId, onLogged, onManual }) {
   if (!meal) {
     return (
       <form onSubmit={analyze} className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <label className="block sm:col-span-2 lg:col-span-3">
-          <span className="mb-1 block text-sm uppercase tracking-wider text-muted">What did you eat?</span>
-          <textarea
+        <div className="sm:col-span-2 lg:col-span-3">
+          <p className="mb-1 text-sm uppercase tracking-wider text-muted" aria-hidden="true">What did you eat?</p>
+          <FoodSearch
+            multiline
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) e.currentTarget.form.requestSubmit();
-            }}
-            maxLength={500}
-            rows={2}
-            placeholder="I had a 3-egg omelette and an iced coffee for breakfast"
-            className="px-frame w-full resize-y bg-night-900/80 px-3 py-2 text-xl text-ink outline-none placeholder:text-night-500 focus:[--frame:var(--color-cyan)]"
+            onChange={setText}
+            onPick={startWith}
+            onEnter={analyze}
+            disabled={busy}
+            label="What did you eat? Type a food to pick it, or describe the meal"
+            placeholder="Greek yogurt… or: I had a 3-egg omelette and an iced coffee for breakfast"
+            className="text-xl"
           />
-        </label>
+          <p className="mt-1 text-sm text-muted">
+            Type a food and pick it from the list, or describe the whole meal and press Enter.
+          </p>
+        </div>
         <label className="block">
           <span className="mb-1 block text-sm uppercase tracking-wider text-muted">Date</span>
           <input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)}
@@ -273,7 +292,7 @@ function MealLogger({ userId, onLogged, onManual }) {
     <div className="mt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h3 className="font-title text-2xl font-bold text-nutrition">{meal.display_name}</h3>
-        <p className="text-muted">“{meal.raw_text}” · {meal.meal_type ?? "meal"} · {meal.log_date}</p>
+        <p className="text-muted">{meal.raw_text ? `“${meal.raw_text}” · ` : ""}{meal.meal_type ?? "meal"} · {meal.log_date}</p>
       </div>
       <p className="mt-1 text-sm text-muted">Estimated from USDA FoodData Central. Adjust anything that's off, then confirm.</p>
 
@@ -283,9 +302,11 @@ function MealLogger({ userId, onLogged, onManual }) {
         ))}
       </ul>
 
-      <form onSubmit={add} className="mt-3 flex gap-2">
-        <input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Add an ingredient, e.g. 1 tbsp butter"
-          className="px-frame min-w-0 flex-1 bg-night-900/80 px-3 py-2 text-lg outline-none placeholder:text-night-500 focus:[--frame:var(--color-cyan)]" maxLength={100} />
+      <form onSubmit={addTyped} className="mt-3 flex gap-2">
+        <div className="min-w-0 flex-1">
+          <FoodSearch value={newItem} onChange={setNewItem} onPick={(s) => add({ fdc_id: s.fdc_id })} onEnter={addTyped}
+            label="Add an ingredient" placeholder="Add an ingredient, e.g. 1 tbsp butter" className="text-lg" disabled={busy} />
+        </div>
         <button type="submit" disabled={busy || newItem.trim().length < 2} className="px-focus px-3 text-cyan hover:underline">Add</button>
       </form>
 

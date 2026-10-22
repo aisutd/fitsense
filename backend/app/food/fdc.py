@@ -18,6 +18,8 @@ FALLBACK_TYPES = ["SR Legacy", "Foundation"]
 
 # FDC nutrient numbers
 NUTRIENTS = {"208": "calories", "203": "protein_g", "205": "carbs_g", "204": "fat_g"}
+# Foundation foods often report energy only via Atwater factors (specific is the better estimate).
+ATWATER_ENERGY = ("958", "957")
 EXTRA_NUTRIENTS = {"291": "fiber_g", "269": "sugars_g", "307": "sodium_mg", "601": "cholesterol_mg", "606": "saturated_fat_g"}
 
 
@@ -84,7 +86,7 @@ def _portion_label(p: dict) -> str:
 
 
 def parse_food(data: dict) -> Food:
-    per_100g, other = {}, {}
+    per_100g, other, atwater = {}, {}, {}
     for n in data.get("foodNutrients", []):
         number, value = _nutrient_number(n), _nutrient_value(n)
         if value is None:
@@ -93,6 +95,11 @@ def parse_food(data: dict) -> Food:
             per_100g[NUTRIENTS[number]] = value
         elif number in EXTRA_NUTRIENTS:
             other[EXTRA_NUTRIENTS[number]] = value
+        elif number in ATWATER_ENERGY:
+            atwater[number] = value
+    energy = next((atwater[n] for n in ATWATER_ENERGY if n in atwater), None)
+    if "calories" not in per_100g and energy is not None:
+        per_100g["calories"] = energy
     portions = []
     for p in data.get("foodPortions", []):
         weight = p.get("gramWeight")
@@ -123,6 +130,7 @@ PROCESSED = {
     "salad", "sandwich", "spread", "dip", "creamed", "candied", "mix", "formula", "smoothie",
     "white", "yolk", "glazed", "breaded", "stuffed", "with", "made", "cooked", "boiled", "roasted",
 }
+COOKING_FAT_WORDS = {"fat", "oil", "butter", "fried", "lard", "ghee"}
 GENERIC = {"raw", "nfs", "whole", "plain", "regular", "fresh", "ns", "a", "or", "as", "to", "type", "made", "from"}
 
 
@@ -130,9 +138,13 @@ def _words(text: str) -> list[str]:
     return [w.rstrip("s") if len(w) > 3 else w for w in re.findall(r"[a-z]+", text.lower())]
 
 
-def rank_score(query: str, description: str, data_type: str, fdc_score: float = 0.0) -> float:
-    q = set(_words(query))
+def rank_score(query: str, description: str, data_type: str, fdc_score: float = 0.0, partial: bool = False) -> float:
+    """Higher = better match. partial: the last query word may be half typed ("greek yog")."""
     desc_words = _words(description)
+    query_words = _words(query)
+    if partial and query_words:
+        query_words[-1] = next((w for w in desc_words if w.startswith(query_words[-1])), query_words[-1])
+    q = set(query_words)
     d = set(desc_words)
     head = _words(description.split(",")[0])
     score = 0.0
@@ -143,6 +155,19 @@ def rank_score(query: str, description: str, data_type: str, fdc_score: float = 
         score += 2                                   # main name is exactly the query
     score += 0.5 * len((GENERIC & d) - q)
     score -= 1.5 * len((PROCESSED & d) - q)
+    # FNDDS splits cooked foods into "fat added" / "no added fat". Cooking fat is logged as its own
+    # ingredient, so prefer the plain version unless the player mentioned fat.
+    plain = "no added fat" in description.lower()
+    fat_added = not plain and {"fat", "added"} <= d
+    mentions_fat = bool(q & COOKING_FAT_WORDS)
+    if plain and not mentions_fat:
+        d = d - {"no", "added", "fat"}
+    if fat_added:
+        if mentions_fat:
+            d = d - {"fat", "added"}
+            score += 0.5
+        else:
+            score -= 1
     score -= 0.4 * len(d - q - GENERIC - PROCESSED)   # other qualifiers the user didn't mention
     if "and" in d and "and" not in q:
         score -= 3                                   # combined dishes ("Beans and white rice", "Rum and diet cola")
@@ -154,9 +179,9 @@ def rank_score(query: str, description: str, data_type: str, fdc_score: float = 
     return score + min(fdc_score, 2000) / 2000
 
 
-def rank_hits(query: str, hits: list[SearchHit]) -> list[SearchHit]:
+def rank_hits(query: str, hits: list[SearchHit], partial: bool = False) -> list[SearchHit]:
     for h in hits:
-        h.rank_score = rank_score(query, h.description, h.data_type, h.fdc_score)
+        h.rank_score = rank_score(query, h.description, h.data_type, h.fdc_score, partial)
     usable = [h for h in hits if h.calories_per_100g is not None]
     return sorted(usable, key=lambda h: h.rank_score, reverse=True)
 

@@ -80,6 +80,25 @@ def find_food(text: str) -> KnownFood | None:
     return None
 
 
+def suggest(text: str, limit: int = 4) -> list[tuple[KnownFood, str]]:
+    """Known foods for a half-typed search, with the name or alias that matched:
+    'gre' -> (greek yogurt, 'greek yogurt'), (tea, 'green tea'), ...
+    Every typed word must start a word of the name or alias; text that starts with the query comes first."""
+    typed = normalize(text).split()
+    if not typed:
+        return []
+    best: dict[str, tuple[tuple, str]] = {}
+    for food in foods().values():
+        for k, alias in enumerate((food.name, *food.aliases)):
+            words = normalize(alias).split()
+            if all(any(w.startswith(t) for w in words) for t in typed):
+                rank = (0 if normalize(alias).startswith(" ".join(typed)) else 1, k > 0, len(alias))
+                if food.name not in best or rank < best[food.name][0]:
+                    best[food.name] = (rank, alias)
+    ordered = sorted(best.items(), key=lambda kv: kv[1][0])
+    return [(foods()[name], alias) for name, (_, alias) in ordered[:limit]]
+
+
 @lru_cache
 def recipes() -> dict[str, tuple[RecipeIngredient, ...]]:
     raw = json.loads((DATA_DIR / "recipes.json").read_text(encoding="utf-8"))["recipes"]

@@ -10,15 +10,17 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, signal) {
   let res;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
-  } catch {
+  } catch (error) {
+    if (error.name === "AbortError") throw error; // a newer request replaced this one
     throw new ApiError(0, "Can't reach the FitSense server. Is the backend running?");
   }
   const data = await res.json().catch(() => null);
@@ -54,17 +56,21 @@ export const logActivity = (userId, date, steps) => request("PUT", `/logs/${user
 export const logMeal = (userId, meal) => request("POST", `/logs/${userId}/meals`, meal);
 export const getGoals = (userId) => request("GET", `/goals/${userId}`);
 
-// Food logging: describe a meal -> review the estimate -> confirm.
+// Food logging: describe a meal (or pick foods from search) -> review the estimate -> confirm.
 export const analyzeMeal = (userId, text, logDate, mealType) =>
   request("POST", `/meals/${userId}/analyze`, { text, log_date: logDate, meal_type: mealType || null });
 export const listMeals = (userId, logDate, status) =>
   request("GET", `/meals?user_id=${userId}&log_date=${logDate}${status ? `&status=${status}` : ""}`);
 export const updateMealItem = (mealId, itemId, changes) => request("PATCH", `/meals/${mealId}/items/${itemId}`, changes);
-export const addMealItem = (mealId, text) => request("POST", `/meals/${mealId}/items`, { text });
+// item: { text } typed ("2 tbsp butter") or { fdc_id, quantity?, unit? } picked from search
+export const addMealItem = (mealId, item) => request("POST", `/meals/${mealId}/items`, item);
+export const startMeal = (userId, logDate, mealType, items) =>
+  request("POST", `/meals/${userId}/start`, { log_date: logDate, meal_type: mealType || null, items });
 export const deleteMealItem = (mealId, itemId) => request("DELETE", `/meals/${mealId}/items/${itemId}`);
 export const confirmMeal = (mealId) => request("POST", `/meals/${mealId}/confirm`);
 export const discardMeal = (mealId) => request("POST", `/meals/${mealId}/discard`);
 export const searchFoods = (q) => request("GET", `/foods/search?q=${encodeURIComponent(q)}`);
+export const suggestFoods = (q, signal) => request("GET", `/foods/suggest?q=${encodeURIComponent(q)}`, undefined, signal);
 
 // First readable validation message from a 422, for forms.
 export function validationMessage(error, fallback = "Something went wrong. Please try again.") {

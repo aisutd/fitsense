@@ -321,11 +321,28 @@ class MealItemUpdateIn(BaseModel):
 
 
 class MealItemAddIn(BaseModel):
+    """Either typed text ("2 tbsp sour cream") or a food picked from search (fdc_id)."""
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    text: str = Field(min_length=2, max_length=100)
+    text: str | None = Field(default=None, min_length=2, max_length=200)
+    fdc_id: int | None = Field(default=None, gt=0, description="A food picked from /foods/suggest or /foods/search")
     quantity: float | None = Field(default=None, gt=0, le=5000)
     unit: UnitName | None = None
+
+    @model_validator(mode="after")
+    def _text_or_food(self):
+        if self.text is None and self.fdc_id is None:
+            raise ValueError("Give the ingredient text or pick a food (fdc_id)")
+        return self
+
+
+class MealStartIn(BaseModel):
+    """A meal started from foods picked in the search box."""
+    model_config = ConfigDict(extra="forbid")
+
+    log_date: date
+    meal_type: MealType | None = None
+    items: list[MealItemAddIn] = Field(min_length=1, max_length=30)
 
 
 class FoodRef(BaseModel):
@@ -338,6 +355,12 @@ class FoodSearchHit(BaseModel):
     description: str
     data_type: str
     calories_per_100g: float | None
+
+
+class FoodSuggestion(FoodSearchHit):
+    name: str                                   # "Greek yogurt" for listed foods, the USDA description otherwise
+    data_type: str | None
+    source: Literal["list", "usda"]
 
 
 class MealItemOut(BaseModel):

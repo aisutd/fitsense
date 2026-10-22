@@ -1,6 +1,6 @@
 """Live smoke test for food logging: real spaCy model + real FoodData Central + real Supabase.
 
-Needs backend/sql/001-006 applied, FDC_API_KEY in .env, and the sample players
+Needs backend/sql/001-007 applied, the USDA import (python -m app.food.fdc_import), and the sample players
 (python backend/scripts/seed_sample_users.py).
 
 Usage:
@@ -11,6 +11,7 @@ Usage:
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import date
@@ -72,6 +73,17 @@ def main():
     check("food not in the food list is found by FDC search", status == 200 and unknown["items"][0]["food"], unknown)
     print(f"       pho -> {unknown['items'][0]['food']['description']} (confidence {unknown['items'][0]['match_confidence']})")
     request("POST", f"/meals/{unknown['meal_id']}/discard")
+
+    started = time.monotonic()
+    status, suggestions = request("GET", "/foods/suggest?q=greek%20yog")
+    took = time.monotonic() - started
+    check("search as you type finds Greek yogurt from the local USDA copy",
+          status == 200 and suggestions and suggestions[0]["name"] == "Greek yogurt",
+          f"{status} {suggestions} - did you run sql/007 and python -m app.food.fdc_import?")
+    print(f"       {len(suggestions)} suggestions in {took * 1000:.0f} ms, e.g. {suggestions[1]['name']}")
+    status, picked = request("POST", f"/meals/{uid}/start", {"log_date": TODAY, "items": [{"fdc_id": suggestions[0]["fdc_id"]}]})
+    check("start a meal from a picked food", status == 200 and picked["items"][0]["match_confidence"] == 1, picked)
+    request("POST", f"/meals/{picked['meal_id']}/discard")
 
     status, confirmed = request("POST", f"/meals/{meal['meal_id']}/confirm")
     check("confirm the meal", status == 200 and confirmed["status"] == "confirmed", confirmed)
