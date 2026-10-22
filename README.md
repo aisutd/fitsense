@@ -33,6 +33,9 @@ This is a generic starter configuration. The team can add project-specific depen
    - `001_create_profiles.sql`: the `profiles` table
    - `002_data_model.sql`: the rest of the FitSense data model (workouts, nutrition, sleep, activity, HealthScore, forecasts, gamification, food logging, achievements)
    - `003_gamification_points.sql`: the `xp_events` points history and the `award_points` function
+   - `004_healthscore.sql`: HealthScore weights (30/25/25/20) and the workout/macro/activity goal columns it needs
+   - `005_accounts.sql`: username/password accounts for the testing login
+   - `006_food_logging.sql`: FoodData Central search cache and the meal-review fields on `meal_items`
 3. Run `docker compose up -d --build`. The API is at http://localhost:8000, and interactive docs are at http://localhost:8000/docs.
 
 ### Profile endpoints
@@ -107,6 +110,67 @@ Example: a user at 200 points completes a workout, so `POST {"action": "workout_
 - Points are stored in `user_gamification.total_xp` (running total) and `xp_events` (history). The `award_points` database function updates both in one transaction, so simultaneous awards can't lose points.
 - Unknown users get `404`; unknown actions get `422`.
 
+### HealthScore
+
+An overall 0–100 score from four categories: **workouts 30%, nutrition 25%, sleep 25%, activity 20%** (weights come from the newest `health_score_config` row). The calculation is in `backend/app/healthscore.py` as reusable functions, one per category.
+
+| Category | Score |
+|---|---|
+| Workouts | completed ÷ scheduled × 100, capped at 100 (partial = half). Scheduled = days per week from the newest workout plan, else onboarding, scaled to the window. |
+| Nutrition | how closely daily totals from **confirmed meals** match the targets (calories 40%, protein 30%, carbs 15%, fat 15%). Needs meals on 3+ days. Without a nutrition goal, targets are estimated from the profile. |
+| Sleep | closeness to the sleep target (default 8 h): 7 h → 88 |
+| Activity | min(100, steps ÷ step target × 100), default 8,000 steps; active minutes (default 30) when no steps are logged |
+
+A category without enough data is left out and the overall score is marked `provisional`; with no data at all, `overall_score` is `null`. HealthScore is a motivational wellness metric, not a medical assessment.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/healthscore/{user_id}?range=week\|last-week\|month&end_date=YYYY-MM-DD` | Calculate the score (last 7 days, the 7 before that, or last 30 days) |
+| `POST` | `/healthscore/{user_id}/snapshots` | Calculate and save to `health_scores` |
+| `GET` | `/healthscore/{user_id}/history` | Saved scores, newest first |
+| `POST` | `/logs/{user_id}/workouts` | Log a workout (`completed`, `partial`, `skipped`) |
+| `PUT` | `/logs/{user_id}/sleep/{date}` | Log (or replace) a night's sleep |
+| `PUT` | `/logs/{user_id}/activity/{date}` | Log (or replace) a day's steps / active minutes |
+| `POST` | `/logs/{user_id}/meals` | Store a confirmed meal's nutrition (from the food-logging pipeline) |
+| `GET` / `PUT` | `/goals/{user_id}` | Current targets / set nutrition, sleep, step and active-minute goals |
+
+### Food logging
+
+Players describe a meal in plain text; the backend works out the ingredients and looks up nutrition in
+**USDA FoodData Central** (FDC). Nutrition values always come from FDC - the language model only finds foods and amounts.
+
+```
+"I had a 3-egg omelette for breakfast"
+  -> spaCy food model finds [3]-[egg] [omelette]         (backend/app/food/parser.py, trained in backend/ml/food_ner)
+  -> recipe: omelette = eggs + 1 tsp oil (assumed) + 20 g cheddar (assumed)   (app/food/data/recipes.json)
+  -> each food -> FDC id: ~200 common foods are pinned (app/food/data/foods.json); others are searched and ranked
+  -> grams from FDC portions ("1 large egg = 50 g"), nutrients = per-100 g value x grams / 100
+  -> saved as an *estimated* meal; the player adjusts amounts / swaps foods, then confirms
+```
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/meals/{user_id}/analyze` | `{"text", "log_date", "meal_type"?}` -> estimated meal with ingredients and totals |
+| `GET` | `/meals?user_id=&log_date=` | A user's meals for a day |
+| `GET` | `/meals/{meal_id}` | One meal |
+| `PATCH` | `/meals/{meal_id}/items/{item_id}` | Change `quantity` / `unit`, or swap to another `fdc_id` |
+| `POST` / `DELETE` | `/meals/{meal_id}/items[/{item_id}]` | Add or remove an ingredient |
+| `POST` | `/meals/{meal_id}/confirm` | Counts toward the HealthScore and awards `meal_logged` points |
+| `POST` | `/meals/{meal_id}/discard` | Throw the estimate away |
+| `GET` | `/foods/search?q=` | Search FDC (ranked, cached) to pick a food |
+
+- Needs `FDC_API_KEY` in `.env` (free: https://fdc.nal.usda.gov/api-key-signup). FDC results are cached in Supabase for 30 days.
+- Ingredients added by a recipe are marked `is_assumed`; weak matches or guessed amounts are marked `needs_review`.
+- The food model's training data, evaluation and retraining steps are in `backend/ml/food_ner/README.md`.
+
+### Testing login
+
+`POST /auth/signup` and `POST /auth/login` take `{"username", "password"}` and return `{"user_id", "username", "has_profile"}`. Passwords are stored as salted scrypt hashes in `accounts`. The account's `user_id` is also the profile's id.
+
+This is for testing only: there are no sessions yet, and the other endpoints don't check who is calling.
+
+To create sample players (`ava`, `ben`, `cara`, `dev`) with logs, run `python backend/scripts/seed_sample_users.py`; their password is `SAMPLE_PASSWORD` in that script.
+
 ### Tests
 
 ```bash
@@ -115,4 +179,7 @@ pip install -r requirements-dev.txt
 pytest                                        # unit tests, no Supabase needed
 python scripts/smoke_test_profiles.py         # live tests against the running backend + Supabase
 python scripts/smoke_test_gamification.py
+python scripts/seed_sample_users.py           # sample players + HealthScore checks against the spec's examples
+python scripts/smoke_test_food.py             # food logging end to end (real model, FDC and Supabase)
+python ml/food_ner/evaluate.py                # food model accuracy on the hand-written test set
 ```

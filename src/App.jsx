@@ -1,15 +1,44 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLenis } from "lenis/react";
 import PixelBackground from "./components/PixelBackground";
 import PixelTransition from "./components/PixelTransition";
 import { NameGreeting, Information, GoalScreen, Proficiency, WorkoutDays, WorkoutLocation } from "./screens/Onboarding";
 import HealthScore from "./screens/HealthScore";
-import { supabase } from "./supabaseClient";
+import Auth from "./screens/Auth";
+import { fromApiProfile, getProfile, profileErrorMessage, saveProfile, toApiProfile } from "./api";
+
+// Screens: -1 log in / sign up, 0 loading the player, 1-6 onboarding, 7 HealthScore.
+const AUTH = -1;
+const LOADING = 0;
+const DASHBOARD = 7;
+
+const USER_KEY = "fitsense:userId";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Stay logged in on this device until the player logs out.
+function savedUserId() {
+  try {
+    const saved = localStorage.getItem(USER_KEY);
+    return saved && UUID_RE.test(saved) ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberUser(id) {
+  try {
+    if (id) localStorage.setItem(USER_KEY, id);
+    else localStorage.removeItem(USER_KEY);
+  } catch {
+    // Private mode etc.: still works, just won't stay logged in after a reload.
+  }
+}
 
 const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function App() {
-  const [screen, setScreen] = useState(1);
+  const [userId, setUserId] = useState(savedUserId);
+  const [screen, setScreen] = useState(userId ? LOADING : AUTH);
   const [phase, setPhase] = useState("idle"); // idle | covering | revealing
   const [pendingScreen, setPendingScreen] = useState(null);
   const lenis = useLenis();
@@ -25,6 +54,71 @@ function App() {
   const [inches, setInches] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+
+  function applyProfile(p) {
+    setName(p.name);
+    setAge(p.age);
+    setWeight(p.weight);
+    setFeet(p.feet);
+    setInches(p.inches);
+    setGoal(p.goal);
+    setProficiency(p.proficiency);
+    setWorkoutDays(p.workoutDays);
+    setWorkoutLocation(p.workoutLocation);
+  }
+
+  // Load the logged-in player's profile, then show the dashboard.
+  useEffect(() => {
+    if (screen !== LOADING) return;
+    let cancelled = false;
+    getProfile(userId)
+      .then((p) => {
+        if (cancelled) return;
+        applyProfile(fromApiProfile(p));
+        setScreen(DASHBOARD);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        if (error.status === 404) {
+          setScreen(1); // account exists but onboarding was never finished
+        } else {
+          logOutNow();
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen, userId]);
+
+  function resetProfile() {
+    applyProfile({ name: "", age: "", weight: "", feet: "", inches: "", goal: "", proficiency: "", workoutDays: "", workoutLocation: "" });
+    setSaveError("");
+  }
+
+  function handleAuthenticated(account) {
+    setUserId(account.user_id);
+    rememberUser(account.user_id);
+    resetProfile();
+    if (account.has_profile) {
+      goTo(LOADING);
+    } else {
+      setName(account.username);
+      goTo(1);
+    }
+  }
+
+  function logOutNow() {
+    rememberUser(null);
+    setUserId(null);
+    resetProfile();
+    setScreen(AUTH);
+  }
+
+  function handleLogout() {
+    rememberUser(null);
+    setUserId(null);
+    goTo(AUTH);
+  }
 
   // Move to another screen behind the pixel dissolve.
   function goTo(next) {
@@ -53,34 +147,37 @@ function App() {
     setSaving(true);
     setSaveError("");
 
-    const { error } = await supabase.from("users").insert({
-      name: name,
-      age: age,
-      weight_lbs: weight,
-      height_feet: feet,
-      height_inches: inches,
-      goal: goal,
-      proficiency: proficiency,
-      workout_days: workoutDays,
-      workout_location: workoutLocation,
-    });
-
-    console.log("insert error:", error);
-
-    setSaving(false);
-
-    if (error) {
-      setSaveError("Couldn't save your profile. Please try again.");
+    // The profile uses the account's id, so logging in finds it again.
+    const id = userId ?? crypto.randomUUID();
+    try {
+      await saveProfile(
+        id,
+        toApiProfile({ name, age, weight, feet, inches, goal, proficiency, workoutDays, workoutLocation })
+      );
+    } catch (error) {
+      setSaveError(profileErrorMessage(error));
+      setSaving(false);
       return;
     }
 
-    goTo(7);
+    setUserId(id);
+    rememberUser(id);
+    setSaving(false);
+    goTo(DASHBOARD);
   }
 
   const back = () => goTo(screen - 1);
 
   let content;
-  if (screen === 1) {
+  if (screen === AUTH) {
+    content = <Auth onAuthenticated={handleAuthenticated} />;
+  } else if (screen === LOADING) {
+    content = (
+      <p role="status" className="relative z-10 flex min-h-screen items-center justify-center text-2xl text-muted">
+        Loading player...
+      </p>
+    );
+  } else if (screen === 1) {
     content = <NameGreeting name={name} setName={setName} onContinue={() => goTo(2)} />;
   } else if (screen === 2) {
     content = (
@@ -118,8 +215,10 @@ function App() {
   } else {
     content = (
       <HealthScore
+        userId={userId}
         profile={{ name, age, weight, feet, inches, goal, proficiency, workoutDays, workoutLocation }}
         onEditProfile={() => goTo(1)}
+        onLogout={handleLogout}
       />
     );
   }
