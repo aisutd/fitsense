@@ -3,7 +3,7 @@ import { item } from "./ScreenLayout";
 
 // Submit button for an onboarding form. Stays visible but disabled until the
 // screen is valid, so players can see what they're working toward.
-function ContinueButton({ show, busy = false, label = "Continue" }) {
+function ContinueButton({ show, busy = false, label = "Continue", busyLabel = "Saving..." }) {
   const disabled = !show || busy;
 
   return (
@@ -18,7 +18,7 @@ function ContinueButton({ show, busy = false, label = "Continue" }) {
         }`}
         style={disabled ? { "--frame": "var(--color-night-500)", "--shadow": "var(--color-night-700)" } : { "--frame": "#c9ffe0", "--shadow": "#1d7a48" }}
       >
-        {busy ? "Saving..." : `${label} ▶`}
+        {busy ? busyLabel : `${label} ▶`}
       </button>
     </motion.div>
   );

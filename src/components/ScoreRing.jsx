@@ -41,7 +41,7 @@ function ScoreRing({ scores, categories, children, className = "" }) {
     const byKey = Object.fromEntries(categories.map((c) => [c.key, c]));
     return QUADRANT_ORDER.map((key, q) => {
       const cat = byKey[key];
-      const lit = scores[key].score / 100;
+      const lit = (scores[key].score ?? 0) / 100;
       return {
         key,
         color: cat.color,

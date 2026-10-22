@@ -1,3 +1,5 @@
 fastapi  #framework
 uvicorn[standard] #sever to run FastAPI
 supabase
+spacy>=3.8,<3.9
+httpx

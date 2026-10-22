@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from supabase import Client
 
 from app.database import get_supabase
-from app.routers import gamification, profiles, leaderboard
+from app.routers import gamification, profiles
 
 app = FastAPI()
 app.add_middleware(
@@ -14,9 +14,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(profiles.router)
 app.include_router(gamification.router)
-app.include_router(leaderboard.router)
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
