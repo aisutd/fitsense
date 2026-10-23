@@ -183,6 +183,12 @@ This is for testing only: there are no sessions yet, and the other endpoints don
 
 To create sample players (`ava`, `ben`, `cara`, `dev`) with logs, run `python backend/scripts/seed_sample_users.py`; their password is `SAMPLE_PASSWORD` in that script.
 
+**200 test players** (`tester001` ... `tester200`, same password) already exist in the team's Supabase project, so anyone
+whose `.env` points at that project can log in as any of them. They have varied profiles and two weeks of logs with
+different habits (on track, mixed, struggling, logs only some categories, lapsed, brand new), so HealthScores range from
+none to 100. `python backend/scripts/seed_test_users.py` recreates them in another Supabase project (`--count N` for fewer);
+it's safe to re-run and checks every login.
+
 ### Tests
 
 ```bash
@@ -192,6 +198,7 @@ pytest                                        # unit tests, no Supabase needed
 python scripts/smoke_test_profiles.py         # live tests against the running backend + Supabase
 python scripts/smoke_test_gamification.py
 python scripts/seed_sample_users.py           # sample players + HealthScore checks against the spec's examples
+python scripts/seed_test_users.py             # 200 test players (tester001-tester200) with varied habits
 python scripts/smoke_test_food.py             # food logging end to end (real model, FDC and Supabase)
 python ml/food_ner/evaluate.py                # food model accuracy on the hand-written test set
 ```
