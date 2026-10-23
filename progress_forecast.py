@@ -341,11 +341,122 @@ def format_forecast(forecasts):
     return "\n".join(lines)
 
 
-# Chart colors: one blue for every metric, and the HealthScore screen's category hues a step
-# darker so they hold contrast on the white chart background.
-CHART = {"line": "#2a78d6", "wash": "#2a78d614", "ink": "#0b0b0b", "ink2": "#52514e",
-         "muted": "#898781", "grid": "#e1e0d9", "axis": "#c3c2b7", "surface": "#fcfcfb"}
-CATEGORY_COLORS = {"nutrition": "#e5475a", "workouts": "#3d7ef0", "activity": "#17a05c", "sleep": "#8f55f0"}
+# The graph is styled like the website's HealthScore screen (src/index.css on
+# feature/healthscore-ui): the night palette, VT323 pixel font, neon category frames and
+# pixel-art icons.
+THEME = {
+    "night950": "#060a15", "night900": "#0a1122", "night800": "#10192f", "night700": "#18233f",
+    "night600": "#26345a", "night500": "#3a4a78", "ink": "#e8edff", "muted": "#94a3c8",
+    "gold": "#f7b733", "cyan": "#4fd8ff",
+}
+CATEGORY_COLORS = {"nutrition": "#ff5d6c", "workouts": "#4d8dff", "activity": "#42e08b", "sleep": "#a66bff"}
+# Each metric's frame color and icon. HealthScore gets the screen's gold trophy.
+PANELS = {
+    "weight_kg": (THEME["cyan"], "kettlebell"),
+    "workouts_per_week": (CATEGORY_COLORS["workouts"], "dumbbell"),
+    "daily_steps": (CATEGORY_COLORS["activity"], "runner"),
+    "health_score": (THEME["gold"], "trophy"),
+}
+CATEGORY_ICONS = {"nutrition": "apple", "workouts": "dumbbell", "activity": "runner", "sleep": "moon"}
+# Pixel art copied from src/icons.js on feature/healthscore-ui. One character per pixel; "." is clear.
+ICONS = {
+    "trophy": {
+        "colors": {"y": "#f7b733", "o": "#c4831a", "w": "#fff1c4", "b": "#8a5a32"},
+        "art": [
+            "..yyyyyyyy..",
+            "yyywyyyyyoyy",
+            "y.ywyyyyyo.y",
+            "y.ywyyyyyo.y",
+            ".yyyyyyyoyy.",
+            "...yyyyoo...",
+            "....yyoo....",
+            ".....yo.....",
+            ".....yo.....",
+            "...oooooo...",
+            "...bbbbbb...",
+            "..bbbbbbbb..",
+        ],
+    },
+    "kettlebell": {
+        "colors": {"k": "#94a3c8", "d": "#5d6b91", "w": "#e8edff"},
+        "art": [
+            "...kkkkkk...",
+            "..kk....kk..",
+            "..k......k..",
+            "..kk....kk..",
+            ".kkkkkkkkkk.",
+            "kkwkkkkkkkkk",
+            "kwkkkkkkkkkk",
+            "kkkkkkkkkkkd",
+            "kkkkkkkkkkdd",
+            ".kkkkkkkddd.",
+            "..dddddddd..",
+        ],
+    },
+    "dumbbell": {
+        "colors": {"b": "#4d8dff", "d": "#2c5fc4", "l": "#b9cdf0"},
+        "art": [
+            ".bb......bb.",
+            "bbbb....bbbb",
+            "bbbb....bbbb",
+            "bbbbllllbbbb",
+            "bbbbllllbbbb",
+            "dddd....dddd",
+            "dddd....dddd",
+            ".dd......dd.",
+        ],
+    },
+    "runner": {
+        "colors": {"g": "#42e08b", "d": "#22a862"},
+        "art": [
+            "......gg....",
+            "......gg....",
+            "...ggggg....",
+            "..g..ggg.gg.",
+            ".g...gg.....",
+            ".....ggg....",
+            "....gg.gg...",
+            "...gg...dd..",
+            "..dd.....d..",
+            ".dd......d..",
+            "dd.......dd.",
+        ],
+    },
+    "apple": {
+        "colors": {"r": "#ff5d6c", "d": "#c23447", "w": "#ffd1d6", "g": "#42e08b", "b": "#8a5a32"},
+        "art": [
+            "......b.gg..",
+            "......bggg..",
+            "...rr.b.rr..",
+            "..rrrrrrrrr.",
+            ".rwwrrrrrrrr",
+            ".rwrrrrrrrrr",
+            ".rrrrrrrrrrr",
+            ".rrrrrrrrrrd",
+            ".rrrrrrrrrdd",
+            "..rrrrrrrdd.",
+            "...rrd.rdd..",
+        ],
+    },
+    "moon": {
+        "colors": {"p": "#a66bff", "d": "#7443c9", "s": "#e0ccff"},
+        "art": [
+            "....ppp.....",
+            "..pppp....s.",
+            ".ppp.......",
+            ".ppp.......s",
+            "pppp........",
+            "pppp........",
+            "pppd........",
+            "pppdd.......",
+            ".pppdd....d.",
+            ".ppppddddd..",
+            "..pppppdd...",
+            "....ppp.....",
+        ],
+    },
+}
+FONT_PATH = BASE_DIR / "assets" / "fonts" / "VT323-Regular.ttf"  # SIL Open Font License, see VT323-LICENSE.txt
 CHART_FORMAT = {"weight_kg": "{:.1f}", "workouts_per_week": "{:.1f}", "daily_steps": "{:,.0f}",
                 "health_score": "{:.0f}"}
 SLOPE_UNITS = {"weight_kg": "kg", "workouts_per_week": "workouts", "daily_steps": "steps",
@@ -381,17 +492,101 @@ def y_limits(metric, values):
     return (lo - (hi - lo) * 0.04 if lo == 0.0 else lo), hi
 
 
-def draw_metric(ax, metric, result):
+def pixel_font(size):
+    from matplotlib.font_manager import FontProperties
+
+    return FontProperties(fname=FONT_PATH, size=size)
+
+
+def draw_icon(fig, name, x, y, height):
+    """Draw a pixel icon with its bottom-left corner at (x, y), in figure coordinates.
+
+    Returns the icon's right edge, so text can follow it.
+    """
+    from matplotlib.colors import to_rgba
+
+    icon = ICONS[name]
+    width = max(len(row) for row in icon["art"])
+    pixels = np.zeros((len(icon["art"]), width, 4))
+    for r, row in enumerate(icon["art"]):
+        for c, ch in enumerate(row):
+            if ch in icon["colors"]:
+                pixels[r, c] = to_rgba(icon["colors"][ch])
+    fig_w, fig_h = fig.get_size_inches()
+    icon_width = height * fig_h / fig_w * width / len(icon["art"])
+    ax = fig.add_axes((x, y, icon_width, height))
+    ax.imshow(pixels, interpolation="nearest")
+    ax.set_axis_off()
+    return x + icon_width
+
+
+def wrap_parts(fig, parts, font, max_width, sep=".  "):
+    """Join parts into lines no wider than max_width (figure coordinates), breaking between parts."""
+    renderer = fig.canvas.get_renderer()
+
+    def width(text):
+        probe = fig.text(0, 0, text, fontproperties=font)
+        size = probe.get_window_extent(renderer).width / fig.bbox.width
+        probe.remove()
+        return size
+
+    lines = [parts[0]]
+    for part in parts[1:]:
+        if width(lines[-1] + sep + part + ".") <= max_width:
+            lines[-1] += sep + part
+        else:
+            lines.append(part)
+    return "\n".join(line + "." for line in lines)
+
+
+def draw_frame(fig, box, color):
+    """A dark panel with a 3px neon border and a soft glow, like the screen's category cards."""
+    from matplotlib.patches import Rectangle
+
+    x, y, w, h = box
+    fig.add_artist(Rectangle((x, y), w, h, transform=fig.transFigure, facecolor=THEME["night800"],
+                             alpha=0.92, lw=0, zorder=0))
+    for width, alpha in ((14, 0.05), (8, 0.10), (4.5, 1.0)):  # glow first, then the crisp border
+        fig.add_artist(Rectangle((x, y), w, h, transform=fig.transFigure, fill=False, edgecolor=color,
+                                 lw=width, alpha=alpha, joinstyle="miter", zorder=1))
+
+
+def draw_backdrop(fig):
+    """Night sky: seeded stars, and a stepped mountain and pine ridge along the bottom."""
+    from matplotlib.patches import Rectangle
+
+    sky = fig.add_axes((0, 0, 1, 1), zorder=-10)
+    sky.set_xlim(0, 320)
+    sky.set_ylim(0, 240)
+    sky.set_axis_off()
+    sky.add_patch(Rectangle((0, 0), 320, 240, color=THEME["night950"], lw=0))
+    rand = np.random.default_rng(7)
+    for _ in range(90):
+        size = rand.choice([0.8, 0.8, 1.2, 1.8])
+        sky.add_patch(Rectangle((rand.uniform(0, 320), rand.uniform(30, 240)), size, size, lw=0,
+                                color=THEME["ink"] if size > 1.5 else THEME["muted"], alpha=rand.uniform(0.25, 0.8)))
+    for base, amp, step, color in ((46, 9, 8, THEME["night800"]), (30, 6, 5, THEME["night900"])):
+        height = base
+        for x in range(0, 320, step):
+            height = max(base - amp * 2, min(base + amp, height + rand.uniform(-0.5, 0.5) * amp))
+            sky.add_patch(Rectangle((x, 0), step, round(height), color=color, lw=0))
+
+
+def draw_metric(fig, box, metric, result):
     import matplotlib.dates as mdates
+    import matplotlib.patheffects as pe
     import matplotlib.ticker as mticker
 
+    color, icon = PANELS[metric]
     label, unit, _, _ = METRICS[metric]
-    ax.set_title(f"{label} ({unit})" if unit else label, loc="left", fontsize=12, fontweight="bold",
-                 color=CHART["ink"], pad=34)
+    x, y, w, h = box
+    draw_frame(fig, box, color)
+    left, top = x + 0.022, y + h - 0.028
+    icon_right = draw_icon(fig, icon, left, top - 0.04, 0.04)
+    fig.text(icon_right + 0.012, top - 0.022, label, color=color, fontproperties=pixel_font(26), va="center")
     if result is None:
-        ax.set_axis_off()
-        ax.text(0.5, 0.5, f"No data yet.\n{EMPTY_HINTS[metric]}", ha="center", va="center",
-                color=CHART["muted"], fontsize=10.5, transform=ax.transAxes)
+        fig.text(x + w / 2, y + h / 2 - 0.02, f"No data yet.\n{EMPTY_HINTS[metric]}", ha="center", va="center",
+                 color=THEME["muted"], fontproperties=pixel_font(19), linespacing=1.4)
         return
 
     fmt = CHART_FORMAT[metric].format
@@ -399,8 +594,12 @@ def draw_metric(ax, metric, result):
     slope = result["slope"]
     sign = "+" if slope > 0 else "−" if slope < 0 else "±"
     amount = f"{abs(slope):,.0f}" if metric == "daily_steps" else f"{abs(slope):.2f}"
-    ax.text(0, 1.13, f"{fmt(end)} in {HORIZONS[-1]} weeks  ·  {sign}{amount} {SLOPE_UNITS[metric]} a week",
-            transform=ax.transAxes, fontsize=10.5, color=CHART["ink"])
+    big = fig.text(left, top - 0.088, fmt(end), color=THEME["ink"], fontproperties=pixel_font(46), va="baseline")
+    fig.canvas.draw()  # measure the big number so the rest of the line sits right after it
+    big_right = big.get_window_extent().transformed(fig.transFigure.inverted()).x1
+    suffix = "/100" if metric == "health_score" else unit
+    fig.text(big_right + 0.006, top - 0.088, f"{suffix}  in {HORIZONS[-1]} weeks  ·  {sign}{amount} {SLOPE_UNITS[metric]}/wk",
+             color=THEME["muted"], fontproperties=pixel_font(19), va="baseline")
     notes = [f"Now {fmt(result['level'])}", f"{result['weeks_of_data']} "
              f"{'week' if result['weeks_of_data'] == 1 else 'weeks'} of data"]
     if result["weeks_of_data"] < 4:
@@ -410,58 +609,69 @@ def draw_metric(ax, metric, result):
         notes.append(f"assumes {result['adherence']:.0%} of planned workouts")
     if result.get("missing"):
         notes.append("provisional")
-    ax.text(0, 1.04, "  ·  ".join(notes), transform=ax.transAxes, fontsize=8.5, color=CHART["muted"])
+    note_text = wrap_parts(fig, notes, pixel_font(16), w - 0.045)
+    fig.text(left, top - 0.104, note_text, color=THEME["muted"], fontproperties=pixel_font(16), va="top",
+             linespacing=1.25)
+    note_room = 0.02 * note_text.count("\n")  # a wrapped note pushes the plot down
 
+    legend_room = 0.085 if metric == "health_score" else 0.0
+    ax = fig.add_axes((x + 0.06, y + 0.04 + legend_room, w - 0.115, h - 0.205 - legend_room - note_room))
+    ax.set_facecolor("none")
     logged, future = chart_lines(result)
     origin = result["predictions"][0][0] - timedelta(days=13)  # Monday of the last complete week
-    ax.axvspan(origin, future[-1][0] + timedelta(days=4), color=CHART["wash"], lw=0)
-    ax.axvline(origin, color=CHART["axis"], lw=1)
     lo, hi = y_limits(metric, [v for _, v in logged + future])
+    ax.axvspan(origin, future[-1][0] + timedelta(days=4), color=THEME["night700"], alpha=0.7, lw=0)
+    ax.axvline(origin, color=THEME["night500"], lw=2)
     # Inside the shaded area, at whichever end the forecast line stays away from.
     low_line = min(v for _, v in future) < lo + (hi - lo) * 0.25
-    ax.text(origin + timedelta(days=3), 0.97 if low_line else 0.03, "Forecast",
-            transform=ax.get_xaxis_transform(), fontsize=8.5, color=CHART["ink2"],
+    ax.text(origin + timedelta(days=3), 0.96 if low_line else 0.04, "FORECAST",
+            transform=ax.get_xaxis_transform(), color=THEME["muted"], fontproperties=pixel_font(15),
             va="top" if low_line else "bottom")
 
-    blue = CHART["line"]
+    glow = [pe.Stroke(linewidth=9, foreground=color, alpha=0.18), pe.Normal()]
     if logged:
-        ax.plot([d for d, _ in logged], [v for _, v in logged], color=blue, lw=2, solid_capstyle="round",
-                marker="o", ms=6, mfc=blue, mec=CHART["surface"], mew=1.5, zorder=3)
-    ax.plot([d for d, _ in future], [v for _, v in future], color=blue, lw=2, ls=(0, (4, 3)),
-            dash_capstyle="round", zorder=2)
+        ax.plot([d for d, _ in logged], [v for _, v in logged], color=color, lw=3, solid_capstyle="butt",
+                solid_joinstyle="miter", marker="s", ms=8, mfc=color, mec=THEME["night800"], mew=1.5,
+                zorder=3, path_effects=glow)
+    ax.plot([d for d, _ in future], [v for _, v in future], color=color, lw=3, ls=(0, (2, 1.5)),
+            dash_capstyle="butt", zorder=2, path_effects=glow)
     forecast_points = future[-len(HORIZONS):]
-    ax.plot([d for d, _ in forecast_points], [v for _, v in forecast_points], ls="none", marker="o", ms=6,
-            mfc=CHART["surface"], mec=blue, mew=2, zorder=4)
-    ax.annotate(fmt(end), (future[-1][0], end), xytext=(8, 0), textcoords="offset points", va="center",
-                fontsize=10, fontweight="bold", color=CHART["ink"])
+    ax.plot([d for d, _ in forecast_points], [v for _, v in forecast_points], ls="none", marker="s", ms=9,
+            mfc=THEME["night800"], mec=color, mew=2.5, zorder=4)
+    ax.annotate(fmt(end), (future[-1][0], end), xytext=(10, 0), textcoords="offset points", va="center",
+                color=THEME["ink"], fontproperties=pixel_font(20))
 
     ax.set_ylim(lo, hi)
     ax.set_xlim(min([origin - timedelta(weeks=4)] + [d for d, _ in logged]) - timedelta(days=3),
                 future[-1][0] + timedelta(days=4))
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
-    ax.yaxis.set_major_locator(mticker.MaxNLocator(5))
+    ax.yaxis.set_major_locator(mticker.MaxNLocator(4))
     if metric == "daily_steps":
         ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v / 1000:g}K" if v >= 1000 else f"{v:g}"))
-    ax.grid(axis="y", color=CHART["grid"], lw=1)
+    ax.grid(axis="y", color=THEME["night600"], lw=1.2)
     ax.set_axisbelow(True)
     for side in ("top", "right", "left"):
         ax.spines[side].set_visible(False)
-    ax.spines["bottom"].set_color(CHART["axis"])
-    ax.tick_params(colors=CHART["muted"], labelsize=9, length=0, pad=6)
+    ax.spines["bottom"].set_color(THEME["night500"])
+    ax.spines["bottom"].set_linewidth(2)
+    ax.tick_params(colors=THEME["muted"], length=0, pad=6)
+    for tick in ax.get_xticklabels() + ax.get_yticklabels():
+        tick.set_fontproperties(pixel_font(16))
 
     if metric == "health_score":
-        from matplotlib.lines import Line2D
-
-        handles, labels = [], []
-        for category in ("nutrition", "workouts", "activity", "sleep"):  # the screen's order
+        # The screen's four category cards, in its order: icon, name in its color, now -> 12 weeks.
+        for i, category in enumerate(("nutrition", "workouts", "activity", "sleep")):
+            cx = x + 0.025 + (i % 2) * (w / 2 - 0.01)
+            cy = y + 0.05 - (i // 2) * 0.028
+            draw_icon(fig, CATEGORY_ICONS[category], cx, cy - 0.003, 0.02)
+            fig.text(cx + 0.032, cy, category.title(), color=CATEGORY_COLORS[category],
+                     fontproperties=pixel_font(16), va="bottom")
             part = result["categories"].get(category)
-            handles.append(Line2D([], [], ls="none", marker="o", ms=7, mfc=CATEGORY_COLORS[category],
-                                  mec=CATEGORY_COLORS[category]))
-            labels.append(f"{category.title()}  {part['level']:.0f} → {part['predictions'][-1][1]:.0f}  ·  "
-                          f"{result['weights'][category]:.0%}" if part else f"{category.title()}  not logged yet")
-        ax.legend(handles, labels, loc="upper left", bbox_to_anchor=(0, -0.1), ncol=2, frameon=False,
-                  fontsize=9, labelcolor=CHART["ink2"], handletextpad=0.4, columnspacing=2)
+            detail = (f"{part['level']:.0f} to {part['predictions'][-1][1]:.0f} "
+                      f"({result['weights'][category]:.0%})" if part else "not logged yet")
+            fig.text(cx + 0.096, cy, detail, color=THEME["ink"] if part else THEME["muted"],
+                     fontproperties=pixel_font(16), va="bottom")
 
 
 def write_chart(user_id, forecasts, name=None, folder=None):
@@ -472,19 +682,24 @@ def write_chart(user_id, forecasts, name=None, folder=None):
     matplotlib.use("Agg")  # draw to a file; no window
     import matplotlib.pyplot as plt
 
-    fig, axes = plt.subplots(2, 2, figsize=(13, 9.5), facecolor=CHART["surface"])
-    for ax, metric in zip(axes.flat, METRICS):
-        ax.set_facecolor(CHART["surface"])
-        draw_metric(ax, metric, forecasts.get(metric))
-    fig.suptitle(f"{name or user_id} - progress forecast", x=0.04, ha="left", fontsize=15,
-                 fontweight="bold", color=CHART["ink"])
-    fig.text(0.04, 0.935, "Weekly averages, refit every week with linear regression. "
-             "Solid: logged weeks. Dashed: forecast after the last full week.",
-             fontsize=9.5, color=CHART["ink2"])
-    fig.subplots_adjust(left=0.06, right=0.95, top=0.82, bottom=0.11, hspace=0.75, wspace=0.22)
+    fig = plt.figure(figsize=(14, 11), facecolor=THEME["night950"])
+    draw_backdrop(fig)
+    draw_icon(fig, "trophy", 0.035, 0.945, 0.032)
+    fig.text(0.066, 0.961, "FITSENSE", color=THEME["ink"], fontproperties=pixel_font(30), va="center")
+    fig.text(0.035, 0.875, "Progress Forecast", color=THEME["ink"], fontproperties=pixel_font(64), va="baseline")
+    # "player" for users without a name, as the website's login screen greets them.
+    parts = [f"Your next {HORIZONS[-1]} weeks, {name or 'player'}", "Solid: logged weeks",
+             "Dashed: forecast, refit every week with linear regression"]
+    fig.text(0.037, 0.862, wrap_parts(fig, parts, pixel_font(20), 0.93, sep=". "), va="top",
+             color=THEME["muted"], fontproperties=pixel_font(20))
+    gap, left, bottom, top = 0.025, 0.035, 0.035, 0.81
+    width, height = (1 - 2 * left - gap) / 2, (top - bottom - gap) / 2
+    for i, metric in enumerate(METRICS):
+        box = (left + (i % 2) * (width + gap), top - (i // 2 + 1) * height - (i // 2) * gap, width, height)
+        draw_metric(fig, box, metric, forecasts.get(metric))
     path = Path(folder or BASE_DIR / "charts") / f"forecast-{user_id}.png"
     path.parent.mkdir(exist_ok=True)
-    fig.savefig(path, dpi=150, facecolor=CHART["surface"])
+    fig.savefig(path, dpi=150, facecolor=THEME["night950"])
     plt.close(fig)
     return path
 

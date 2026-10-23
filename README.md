@@ -134,6 +134,8 @@ have forecasts from this week are skipped, so extra runs add nothing. Each saved
 `--user` saves `charts/forecast-<user_id>.png` (matplotlib) and opens it as a tab in VS Code
 with the `code` command; pass `--no-open` to only save it. There is one panel per metric: logged
 weeks as a solid line, the forecast as a dashed line in the shaded area, and under HealthScore
-each category's score now and in 12 weeks with its weight. `charts/` is git-ignored because the
+each category's score now and in 12 weeks with its weight. It is styled like the website's HealthScore screen: the
+night palette, neon category frames, pixel-art icons copied from `src/icons.js`, and the VT323
+pixel font, bundled in `assets/fonts/` with its license (SIL Open Font License). `charts/` is git-ignored because the
 graphs contain users' data. If `code` isn't found, run **Shell Command: Install 'code' command in
 PATH** from VS Code's Command Palette.
