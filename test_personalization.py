@@ -7,6 +7,8 @@ import unittest
 
 import exercise_ranker as ranker
 import progress_forecast as forecast
+import seed_week_one as seed
+import weekly_plan as plans
 from app import healthscore as hs  # progress_forecast puts backend/ on the path
 
 ROOT = Path(__file__).resolve().parent
@@ -527,6 +529,116 @@ class ForecastTests(unittest.TestCase):
         text = forecast.format_forecast(forecast.forecast_user(self.profile(), self.history(), TODAY))
         self.assertIn('Weight: 80.0 kg now', text)
         self.assertIn('HealthScore: no data yet', text)
+
+
+class WeeklyPlanTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.exercises = prototype.load_exercises()
+        cls.profile = {'user_id': 'u1', 'name': 'Sam', 'age': 30, 'fitness_level': 'beginner',
+                       'fitness_goal': 'general_fitness', 'workout_location': 'home', 'workout_frequency': 3,
+                       'equipment': [], 'workout_preferences': [], 'points': 0}
+        cls.week_one = plans.first_week(cls.profile, cls.exercises, date(2026, 10, 5))
+
+    @staticmethod
+    def logs(*statuses):
+        return [{'day_number': day, 'completion_status': s} for day, s in enumerate(statuses, 1) if s]
+
+    @staticmethod
+    def by_day(plan, day):
+        return {item['group']: item for item in plan['items'] if item['day'] == day}
+
+    def test_first_week_spreads_groups_over_days_at_the_bottom_of_the_range(self):
+        self.assertEqual(self.week_one['days'], 3)
+        groups = set(prototype.recommend_exercises(self.profile, self.exercises))
+        for day in (1, 2, 3):
+            self.assertEqual(set(self.by_day(self.week_one, day)), groups)
+        self.assertNotEqual(self.by_day(self.week_one, 1)['Core']['exercise']['id'],
+                            self.by_day(self.week_one, 2)['Core']['exercise']['id'])
+        core = self.by_day(self.week_one, 1)['Core']
+        self.assertEqual((core['sets'], core['reps']), (1, 8))  # adult beginner: 1-3 sets x 8-12 reps
+        cardio = self.by_day(self.week_one, 1)['Cardio']
+        self.assertEqual(cardio['minutes'], 50)  # 150 weekly minutes over 3 days
+        self.assertIsNone(cardio['sets'])
+
+    def test_full_week_progresses(self):
+        week_two = plans.next_week(self.profile, self.exercises, self.week_one, self.logs(*['completed'] * 3))
+        self.assertEqual(week_two['week_start'], date(2026, 10, 12))
+        self.assertEqual(week_two['days'], 3)
+        for day in (1, 2, 3):
+            before, after = self.by_day(self.week_one, day), self.by_day(week_two, day)
+            self.assertEqual(after['Core']['exercise']['id'], before['Core']['exercise']['id'])
+            self.assertEqual(after['Core']['reps'], 10)
+            self.assertEqual(after['Cardio']['minutes'], 50)  # already at the beginner cap
+
+    def test_skipped_day_swaps_its_exercises_and_keeps_the_rest(self):
+        week_two = plans.next_week(self.profile, self.exercises, self.week_one,
+                                   self.logs('completed', 'completed', 'skipped'))
+        self.assertEqual(week_two['days'], 3)  # 2/3 done: same dose
+        self.assertEqual(self.by_day(week_two, 1)['Core'], self.by_day(self.week_one, 1)['Core'])
+        swapped = self.by_day(week_two, 3)['Core']['exercise']['id']
+        self.assertNotIn(swapped, {item['exercise']['id'] for item in self.week_one['items']})
+
+    def test_low_completion_cuts_days_and_volume(self):
+        busy = {**self.profile, 'workout_frequency': 5}
+        week_one = plans.first_week(busy, self.exercises, date(2026, 10, 5))
+        for item in week_one['items']:
+            if item['reps']:
+                item['sets'], item['reps'] = 3, 12
+        week_two = plans.next_week(busy, self.exercises, week_one, self.logs('completed', 'partial'))
+        self.assertEqual(week_two['days'], 3)  # did 2 of 5 days: plan one more than that
+        core = self.by_day(week_two, 1)['Core']
+        self.assertEqual((core['sets'], core['reps']), (2, 12))  # one set down
+
+    def test_steps_stay_inside_the_range(self):
+        bounds = {'sets': (1, 3), 'reps': (8, 12), 'minutes': None}
+        self.assertEqual(plans.step_up({'sets': 1, 'reps': 12, 'minutes': None}, bounds)['sets'], 2)
+        self.assertEqual(plans.step_up({'sets': 1, 'reps': 12, 'minutes': None}, bounds)['reps'], 8)
+        self.assertEqual(plans.step_up({'sets': 3, 'reps': 12, 'minutes': None}, bounds),
+                         {'sets': 3, 'reps': 12, 'minutes': None})
+        self.assertEqual(plans.step_down({'sets': 1, 'reps': 8, 'minutes': None}, bounds),
+                         {'sets': 1, 'reps': 8, 'minutes': None})
+
+    def test_unlogged_days_count_as_skipped(self):
+        self.assertAlmostEqual(plans.completion_rate(self.week_one, self.logs('completed', 'partial')), 0.5)
+
+    def test_format_plan(self):
+        text = plans.format_plan(self.profile, self.week_one)
+        self.assertIn('WEEK OF 2026-10-05', text)
+        self.assertIn('--- Day 3 ---', text)
+        self.assertIn('1 set x 8 reps', text)
+        self.assertIn('50 min moderate effort', text)
+
+    def test_exercise_rows_fit_the_table_constraints(self):
+        rows = [plans.exercise_row(e) for e in self.exercises['home'] + self.exercises['gym']]
+        self.assertLessEqual({r['workout_type'] for r in rows}, set(ranker.PREFERENCES))
+        self.assertLessEqual({r['difficulty'] for r in rows}, {'beginner', 'intermediate', 'advanced'})
+
+    def test_seed_links_week_one_logs_only(self):
+        row = {'user_id': 'u1', 'created_at': '2026-10-23T18:52:00+00:00', 'name': 'Sam', 'age': 30,
+               'fitness_level': 'beginner', 'fitness_goal': 'general_fitness', 'workout_location': 'home',
+               'workout_frequency': 3, 'workout_preferences': [], 'user_preferences': None,
+               'user_gamification': None}
+        profiles = [row, {**row, 'user_id': 'u2'}, {**row, 'user_id': 'dev', 'created_at': '2026-10-16T00:00:00'}]
+        dates = ['2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-14']
+        logs = [{'workout_log_id': f'l{i}', 'user_id': 'u1', 'plan_id': None, 'workout_date': d,
+                 'completion_status': 'completed'} for i, d in enumerate(dates)]
+        client = FakeClient({'profiles': profiles, 'workout_logs': logs, 'exercises': []})
+        original = seed.TEST_USER_COUNT
+        seed.TEST_USER_COUNT = 2
+        try:
+            plan_rows, items, updates, new_exercises, summary = seed.seed(client, today=date(2026, 10, 23))
+        finally:
+            seed.TEST_USER_COUNT = original
+        self.assertEqual([(p['user_id'], p['week_start']) for p in plan_rows],
+                         [('u1', '2026-10-05'), ('u1', '2026-10-12'), ('u2', '2026-10-19')])
+        self.assertEqual([(u['workout_log_id'], u['day_number']) for u in updates],
+                         [('l0', 1), ('l1', 2), ('l2', 3), ('l3', None)])
+        self.assertEqual({u['plan_id'] for u in updates}, {plan_rows[0]['plan_id']})
+        self.assertEqual(summary['later logs left unlinked'], 1)
+        self.assertEqual(summary['week 2: progress'], 1)
+        self.assertEqual(len(new_exercises), 876)
+        self.assertEqual({i['plan_id'] for i in items}, {p['plan_id'] for p in plan_rows})
 
 
 if __name__ == '__main__':

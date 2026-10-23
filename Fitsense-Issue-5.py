@@ -1,6 +1,7 @@
 """FitSense workout recommender.
 
-User profiles come from Supabase; exercises come from home.json and gym.json. After the workout
+User profiles come from Supabase; exercises come from home.json and gym.json. Prints this week's saved
+plan (see weekly_plan.py), building and saving it first if there is none. After the workout
 it prints the user's weekly progress forecast (see progress_forecast.py).
 
     python Fitsense-Issue-5.py --user <supabase user_id>
@@ -188,8 +189,8 @@ def muscle_group(exercise):
     return "Full Body"
 
 
-def recommend_exercises(profile, exercises, model=None):
-    """Return up to PER_GROUP matching exercises per muscle group.
+def recommend_exercises(profile, exercises, model=None, per_group=PER_GROUP):
+    """Return up to per_group matching exercises per muscle group (all of them for None).
 
     With a trained XGBoost model (see exercise_ranker.py), each group is ordered by the user's
     predicted chance of completing it; the rule-based order breaks ties and is used without one.
@@ -209,7 +210,7 @@ def recommend_exercises(profile, exercises, model=None):
             predicted = exercise_ranker.scores(model, profile, matches)
             # sorted() is stable, so equal scores keep the rule-based order.
             matches = [e for _, e in sorted(zip(predicted, matches), key=lambda pair: -pair[0])]
-        result[group] = matches[:PER_GROUP]
+        result[group] = matches[:per_group]
     return result
 
 
@@ -244,11 +245,14 @@ def main():
     except LookupError as error:
         print(error)
         return
+    import weekly_plan  # imported here: weekly_plan loads this file as its recommender
+
     model = exercise_ranker.load_model()
-    print_workout(profile, recommend_exercises(profile, load_exercises(), model))
+    client = supabase_client()
+    print(weekly_plan.format_plan(profile, weekly_plan.current_plan(client, profile, load_exercises(), model=model)))
     print("\nOrdered by the XGBoost ranker." if model else
           "\nNo trained ranker yet (python exercise_ranker.py train); using the rule-based order.")
-    print(progress_forecast.format_forecast(progress_forecast.forecast_from_supabase(supabase_client(), user_id)))
+    print(progress_forecast.format_forecast(progress_forecast.forecast_from_supabase(client, user_id)))
 
 
 if __name__ == "__main__":
