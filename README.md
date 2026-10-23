@@ -93,6 +93,30 @@ logged plan is labeled by whether the user completed that plan. Exercises are ma
 `home.json`/`gym.json` by name. Training needs at least 200 labeled rows (`--force` overrides);
 until a model is saved, recommendations use the rule-based order.
 
+`--user` prints the user's saved plan for this week, building it first if there is none
+(`weekly_plan.py`). Week 1 comes from the profile; from week 2 on, the plan follows last week's
+logs (`plan_id` + `day_number`): a full week progresses the dose, a missed one cuts days and
+volume, and exercises on skipped days are swapped. Run `backend/sql/002_weekly_plans.sql` first.
+
+```bash
+python weekly_plan.py weekly [--dry-run]   # this week's plan for every user who has none
+```
+
+### Demo
+
+Two seeded test users whose plan for the week of Oct 19 was adapted from their week-1 logs:
+
+```bash
+source .venv/bin/activate
+python Fitsense-Issue-5.py --user f449eafd-7993-4a4b-ad52-8adb9fef3270   # Grace: completed week 1, reps 3x6 -> 3x8
+python Fitsense-Issue-5.py --user bd0b181f-7375-4040-a928-de0a4e21e19d   # James: missed workouts, 5 -> 4 days
+python progress_forecast.py --user f449eafd-7993-4a4b-ad52-8adb9fef3270  # Grace's forecast graph
+```
+
+This works through Sunday, Oct 25. After that each user gets a new plan, and since no logs are
+linked to the current one it reads as all skipped and cuts them back. The demo keeps working
+once the app saves `plan_id` and `day_number` with each logged workout.
+
 ## Weekly progress forecast (linear regression)
 
 `progress_forecast.py` forecasts body weight, completed workouts per week, daily steps and

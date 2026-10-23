@@ -14,7 +14,7 @@ are shared, so --undo keeps them.
 """
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
@@ -80,11 +80,8 @@ def seed(client, today=None):
             updates.append({"workout_log_id": log["workout_log_id"], "plan_id": plan_row["plan_id"],
                             "day_number": day})
         summary["week-1 logs past the plan's last day"] += sum(1 for log in linked if log["day_number"] is None)
-        rate = weekly_plan.completion_rate(week_one, linked)
         week_two = weekly_plan.next_week(profile, exercises, week_one, linked)
-        summary["week 2: " + ("progress" if rate >= weekly_plan.PROGRESS_RATE and
-                              "skipped" not in weekly_plan.day_statuses(week_one, linked).values()
-                              else "same dose" if rate >= weekly_plan.REPEAT_RATE else "reduce")] += 1
+        summary["week 2: " + weekly_plan.adaptation(profile, week_one, linked)[0]] += 1
         summary["week 2 days changed"] += week_two["days"] != week_one["days"]
         plan_row, rows = weekly_plan.plan_rows(profile["user_id"], profile, week_two, exercise_ids)
         plans.append(plan_row)

@@ -1,7 +1,7 @@
 """Weekly workout plans saved to Supabase, adapted each week to how the user did last week.
 
 Week 1 comes from the profile: the recommender's exercises spread over workout_frequency days,
-each dose at the bottom of its guideline range (see prescribe() in Fitsense-Issue-5.py). From
+each dose at the bottom of its guideline range (see dose_range() in Fitsense-Issue-5.py). From
 week 2 on, the plan is rebuilt from last week's plan and the workout_logs linked to it
 (plan_id + day_number). Completion = (completed days + half the partial days) / planned days:
 
@@ -37,34 +37,9 @@ PROGRESS_RATE = 0.9
 REPEAT_RATE = 0.6
 REP_STEP = 2
 CARDIO_STEP = 5  # minutes
-STRETCH_SETS = (2, 4)  # "2-4 times" per stretch (ACSM)
 STATUS_RANK = {"skipped": 0, "partial": 1, "completed": 2}
 # Supabase allows large inserts, but smaller ones fail more gracefully.
 INSERT_CHUNK = 500
-
-
-def parse_range(text):
-    """(low, high) from "1-3" or "3"."""
-    low, _, high = text.partition("-")
-    return int(low), int(high or low)
-
-
-def dose_bounds(profile, exercise, days):
-    """{"sets": (lo, hi) | None, "reps": ..., "minutes": ...} for one exercise in a days-day week."""
-    group = recommender.age_group(profile["age"])
-    level = profile["fitness_level"]
-    category = exercise["category"]
-    if category == "stretching":
-        return {"sets": STRETCH_SETS, "reps": None, "minutes": None}
-    if category == "cardio":
-        if group == "youth":
-            return {"sets": None, "reps": None, "minutes": (60, 60)}
-        _, low, high = recommender.CARDIO_WEEKLY[level]
-        minutes = (recommender.session_minutes(low, days), recommender.session_minutes(high, days))
-        return {"sets": None, "reps": None, "minutes": minutes}
-    table = recommender.PLYOMETRIC_DOSE if category == "plyometrics" else recommender.STRENGTH_DOSE
-    sets, reps = table[group][level]
-    return {"sets": parse_range(sets), "reps": parse_range(reps), "minutes": None}
 
 
 def clamp(dose, bounds):
@@ -128,7 +103,7 @@ def assemble(profile, start, days, rotations, doses):
             if not rotation:
                 continue
             exercise = rotation[(day - 1) % len(rotation)]
-            bounds = dose_bounds(profile, exercise, days)
+            bounds = recommender.dose_range(profile, exercise, days)
             dose = clamp(doses[exercise["id"]], bounds) if exercise["id"] in doses else starting_dose(bounds)
             items.append({"day": day, "group": group, "exercise": exercise, **dose})
     return {"week_start": start, "days": days, "items": items}
@@ -150,17 +125,23 @@ def completion_rate(plan, logs):
     return done / plan["days"]
 
 
-def next_week(profile, exercises, previous, logs, model=None):
-    """The plan for the week after previous, adapted to the logs linked to previous."""
+def adaptation(profile, previous, logs):
+    """("progress" | "same dose" | "reduce", days next week) from last week's completion."""
     statuses = day_statuses(previous, logs)
     rate = completion_rate(previous, logs)
     if rate >= PROGRESS_RATE and "skipped" not in statuses.values():
-        trend, days = step_up, min(profile["workout_frequency"], previous["days"] + 1)
-    elif rate >= REPEAT_RATE:
-        trend, days = None, min(profile["workout_frequency"], previous["days"])
-    else:
-        did = sum(1 for s in statuses.values() if s != "skipped")
-        trend, days = step_down, max(1, min(profile["workout_frequency"], did + 1))
+        return "progress", min(profile["workout_frequency"], previous["days"] + 1)
+    if rate >= REPEAT_RATE:
+        return "same dose", min(profile["workout_frequency"], previous["days"])
+    did = sum(1 for s in statuses.values() if s != "skipped")
+    return "reduce", max(1, min(profile["workout_frequency"], did + 1))
+
+
+def next_week(profile, exercises, previous, logs, model=None):
+    """The plan for the week after previous, adapted to the logs linked to previous."""
+    statuses = day_statuses(previous, logs)
+    change, days = adaptation(profile, previous, logs)
+    trend = {"progress": step_up, "same dose": None, "reduce": step_down}[change]
 
     ranked = ranked_groups(profile, exercises, model)
     rotations, doses = {}, {}
@@ -176,7 +157,7 @@ def next_week(profile, exercises, previous, logs, model=None):
         rotation = []
         for item, seen in kept.values():
             exercise = item["exercise"]
-            bounds = dose_bounds(profile, exercise, days)
+            bounds = recommender.dose_range(profile, exercise, days)
             dose = clamp(item, bounds)
             if all(s == "skipped" for s in seen):
                 exercise = next(spare, exercise)
@@ -197,14 +178,13 @@ def next_week(profile, exercises, previous, logs, model=None):
 
 
 def dose_text(profile, item):
-    """How the dose reads in the workout, matching prescribe()."""
+    """How the dose reads in the workout, e.g. "2 sets x 10 reps" or "30 min moderate effort"."""
     category = item["exercise"]["category"]
+    group = recommender.age_group(profile["age"])
     if category == "stretching":
-        return f"hold {recommender.STRETCH_HOLD[recommender.age_group(profile['age'])]}, {item['sets']} times"
+        return f"hold {recommender.STRETCH_HOLD[group]}, {item['sets']} times"
     if category == "cardio":
-        if recommender.age_group(profile["age"]) == "youth":
-            return recommender.prescribe(profile, item["exercise"])
-        effort = recommender.CARDIO_WEEKLY[profile["fitness_level"]][0]
+        effort = "moderate-to-vigorous" if group == "youth" else recommender.CARDIO_WEEKLY[profile["fitness_level"]][0]
         return f"{item['minutes']} min {effort} effort"
     return f"{item['sets']} {'set' if item['sets'] == 1 else 'sets'} x {item['reps']} reps"
 
@@ -213,7 +193,7 @@ def format_plan(profile, plan):
     lines = [f"\n========== FIT-SENSE WEEK OF {plan['week_start']} ==========",
              f"{profile['name']} | Age {profile['age']} | {profile['points']} points",
              f"Level: {profile['fitness_level']} | Goal: {profile['fitness_goal']} | "
-             f"Location: {profile['workout_location']} | {plan['days']} days this week",
+             f"Location: {profile['workout_location']} | {plan['days']} {'day' if plan['days'] == 1 else 'days'} this week",
              f"Saved equipment: {', '.join(profile['equipment']) or 'none'}"]
     for day in range(1, plan["days"] + 1):
         lines.append(f"\n--- Day {day} ---")

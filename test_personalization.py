@@ -92,8 +92,9 @@ class PersonalizationTests(unittest.TestCase):
         self.assertEqual(profile['points'], 0)
         self.assertEqual(profile['age'], 42)
 
-    def prescribe(self, category, **changes):
-        return prototype.prescribe({**self.base, **changes}, {'category': category})
+    def dose(self, category, **changes):
+        profile = {**self.base, **changes}
+        return prototype.dose_range(profile, {'category': category}, profile['workout_frequency'])
 
     def test_age_groups(self):
         self.assertEqual(prototype.age_group(13), 'youth')
@@ -103,31 +104,31 @@ class PersonalizationTests(unittest.TestCase):
         self.assertEqual(prototype.age_group(65), 'senior')
 
     def test_strength_reps_follow_age_and_level(self):
-        self.assertEqual(self.prescribe('strength'), '1-3 sets x 8-12 reps')
-        self.assertEqual(self.prescribe('strength', fitness_level='advanced'), '3-5 sets x 6-12 reps')
-        self.assertEqual(self.prescribe('strength', age=70), '1 set x 10-15 reps')
-        self.assertEqual(self.prescribe('strength', age=15), '1-2 sets x 10-15 reps')
-        self.assertEqual(self.prescribe('powerlifting', fitness_level='intermediate'), '3 sets x 6-12 reps')
+        self.assertEqual(self.dose('strength'), {'sets': (1, 3), 'reps': (8, 12), 'minutes': None})
+        self.assertEqual(self.dose('strength', fitness_level='advanced')['sets'], (3, 5))
+        self.assertEqual(self.dose('strength', age=70)['reps'], (10, 15))
+        self.assertEqual(self.dose('strength', age=15)['sets'], (1, 2))
+        self.assertEqual(self.dose('powerlifting', fitness_level='intermediate')['sets'], (3, 3))
+        self.assertEqual(self.dose('plyometrics')['reps'], (5, 8))
 
     def test_every_age_level_and_category_has_a_dose(self):
         for age in (13, 30, 80):
             for level in ('beginner', 'intermediate', 'advanced'):
                 for category in ('strength', 'powerlifting', 'olympic weightlifting', 'strongman',
                                  'plyometrics', 'stretching', 'cardio'):
-                    self.assertTrue(self.prescribe(category, age=age, fitness_level=level))
+                    dose = self.dose(category, age=age, fitness_level=level)
+                    for low, high in filter(None, dose.values()):
+                        self.assertTrue(0 < low <= high)
 
-    def test_stretch_hold_is_longer_for_older_adults(self):
-        self.assertEqual(self.prescribe('stretching'), 'hold 10-30 s, 2-4 times')
-        self.assertEqual(self.prescribe('stretching', age=65), 'hold 30-60 s, 2-4 times')
+    def test_stretching_is_2_to_4_holds(self):
+        self.assertEqual(self.dose('stretching'), {'sets': (2, 4), 'reps': None, 'minutes': None})
 
     def test_cardio_minutes_split_weekly_guideline_across_days(self):
-        self.assertEqual(self.prescribe('cardio'), '50 min moderate effort')  # 150 / 3 days
-        self.assertEqual(self.prescribe('cardio', fitness_level='intermediate', workout_frequency=5),
-                         '30-60 min moderate effort')
-        self.assertEqual(self.prescribe('cardio', fitness_level='advanced', workout_frequency=7),
-                         '20-21 min vigorous effort')
-        self.assertEqual(self.prescribe('cardio', workout_frequency=1), '60 min moderate effort')  # capped
-        self.assertIn('60 min', self.prescribe('cardio', age=14))
+        self.assertEqual(self.dose('cardio')['minutes'], (50, 50))  # 150 / 3 days
+        self.assertEqual(self.dose('cardio', fitness_level='intermediate', workout_frequency=5)['minutes'], (30, 60))
+        self.assertEqual(self.dose('cardio', fitness_level='advanced', workout_frequency=7)['minutes'], (20, 21))
+        self.assertEqual(self.dose('cardio', workout_frequency=1)['minutes'], (60, 60))  # capped
+        self.assertEqual(self.dose('cardio', age=14)['minutes'], (60, 60))
 
     def test_repeatable_and_does_not_change_input(self):
         before = json.dumps(self.base, sort_keys=True)
@@ -608,6 +609,11 @@ class WeeklyPlanTests(unittest.TestCase):
         self.assertIn('--- Day 3 ---', text)
         self.assertIn('1 set x 8 reps', text)
         self.assertIn('50 min moderate effort', text)
+        self.assertIn('hold 10-30 s, 2 times', text)
+        self.assertIn('hold 30-60 s', plans.format_plan({**self.profile, 'age': 70}, self.week_one))
+        youth = {**self.profile, 'age': 15}
+        self.assertIn('60 min moderate-to-vigorous effort',
+                      plans.format_plan(youth, plans.first_week(youth, self.exercises, date(2026, 10, 5))))
 
     def test_exercise_rows_fit_the_table_constraints(self):
         rows = [plans.exercise_row(e) for e in self.exercises['home'] + self.exercises['gym']]

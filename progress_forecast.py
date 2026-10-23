@@ -58,7 +58,7 @@ MAX_HEALTH_WEEKS = 12
 METRICS = {
     # prediction_type: (label, unit, lowest, highest)
     "weight_kg": ("Weight", "kg", 30.0, 300.0),
-    "workouts_per_week": ("Workouts", "per week", 0.0, None),
+    "workouts_per_week": ("Workouts", "per week", 0.0, 7.0),
     "daily_steps": ("Steps", "per day", 0.0, None),
     "health_score": ("HealthScore", "", 0.0, 100.0),
 }
