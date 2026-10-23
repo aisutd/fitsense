@@ -75,3 +75,65 @@ pip install -r requirements-dev.txt
 pytest                                        # unit tests, no Supabase needed
 python scripts/smoke_test_profiles.py         # live test against the running backend + Supabase
 ```
+
+## Workout recommender and XGBoost ranker
+
+`Fitsense-Issue-5.py` picks exercises with rules (level, equipment, goal). `exercise_ranker.py`
+adds an XGBoost model that orders those exercises by how likely the user is to complete them.
+The rules still decide what can be recommended; the model only changes the order.
+
+```bash
+pip install -r requirements.txt   # on macOS, XGBoost also needs: brew install libomp
+python exercise_ranker.py train   # trains from Supabase and saves models/exercise_ranker.json
+python Fitsense-Issue-5.py --user <user_id>
+```
+
+Training labels come from `plan_exercises` → `workout_plans` → `workout_logs`: each exercise in a
+logged plan is labeled by whether the user completed that plan. Exercises are matched to
+`home.json`/`gym.json` by name. Training needs at least 200 labeled rows (`--force` overrides);
+until a model is saved, recommendations use the rule-based order.
+
+## Weekly progress forecast (linear regression)
+
+`progress_forecast.py` forecasts body weight, completed workouts per week, daily steps and
+HealthScore 1, 4 and 12 weeks ahead. Each metric is averaged per week (Monday–Sunday, UTC; the
+current, unfinished week is left out) and fit with a weighted linear regression:
+
+- **Adapts weekly**: it is refit every week, and a week 4 weeks old counts half as much as the
+  latest one, so a change in habits shows up in the next forecast.
+- **Uses the profile**: the trend is pulled toward a prior from the user's preferences. Workouts
+  start from `workout_frequency`; weight follows the `fitness_goal` (lose: −0.5 kg/week, the low
+  end of the CDC's 0.45–0.9; build muscle: Aragon's lean-gain rate by `fitness_level`; other goals:
+  no change). With little data the prior dominates; after about a month the user's own trend does.
+- **Weight uses the workout forecast**: the goal's expected weight change is scaled by the share
+  of planned workouts the user is forecast to complete, and capped at ±1 kg/week.
+- **HealthScore comes from the HealthScore screen's own code**: each past week is scored by
+  `backend/app/healthscore_repo.calculate` (the "Last 7 Days" view for that week), then the
+  workouts, nutrition, sleep and activity scores are forecast separately and combined with the
+  active `health_score_config` weights, exactly as the screen combines them. Categories the user
+  hasn't logged are left out and the rest re-weighted, like the screen's provisional score. Each
+  category is also saved to `progress_forecasts` (`health_score_workouts`, `health_score_sleep`, ...).
+  Planned workout days come from the same place the HealthScore uses: the newest workout plan,
+  then `user_preferences`, then onboarding.
+
+`backend/app/healthscore.py` and `healthscore_repo.py` are copied unchanged from `main`; keep them
+in sync until this branch is merged with `main`. They need `fastapi` (in `requirements.txt`).
+
+```bash
+python progress_forecast.py --user <user_id>   # graph one user's forecast and open it in VS Code
+python progress_forecast.py weekly --dry-run    # show how many rows the weekly run would save
+python progress_forecast.py weekly              # save forecasts for every user to progress_forecasts
+```
+
+Schedule `weekly` once a week, for example Mondays at 06:00 UTC with cron:
+`0 6 * * 1 cd /path/to/fitsense && .venv/bin/python progress_forecast.py weekly`. Users who already
+have forecasts from this week are skipped, so extra runs add nothing. Each saved row keeps
+`generated_at` and `model_version`, so past forecasts can be compared with what actually happened.
+`Fitsense-Issue-5.py --user` also prints the forecast after the workout.
+
+`--user` saves `charts/forecast-<user_id>.png` (matplotlib) and opens it as a tab in VS Code
+with the `code` command; pass `--no-open` to only save it. There is one panel per metric: logged
+weeks as a solid line, the forecast as a dashed line in the shaded area, and under HealthScore
+each category's score now and in 12 weeks with its weight. `charts/` is git-ignored because the
+graphs contain users' data. If `code` isn't found, run **Shell Command: Install 'code' command in
+PATH** from VS Code's Command Palette.

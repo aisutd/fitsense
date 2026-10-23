@@ -1,6 +1,7 @@
 """FitSense workout recommender.
 
-User profiles come from Supabase; exercises come from home.json and gym.json.
+User profiles come from Supabase; exercises come from home.json and gym.json. After the workout
+it prints the user's weekly progress forecast (see progress_forecast.py).
 
     python Fitsense-Issue-5.py --user <supabase user_id>
 """
@@ -10,6 +11,9 @@ import json
 import os
 import sys
 import uuid
+
+import exercise_ranker
+import progress_forecast
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -117,8 +121,7 @@ def load_exercises():
     }
 
 
-def load_profile_from_supabase(user_id):
-    """Fetch a user's profile, saved equipment and points from Supabase."""
+def supabase_client():
     from supabase import create_client
 
     load_env(BASE_DIR / ".env")
@@ -126,8 +129,12 @@ def load_profile_from_supabase(user_id):
     key = os.getenv("SUPABASE_KEY")
     if not url or not key:
         raise RuntimeError("Set SUPABASE_URL and SUPABASE_KEY in .env (see .env.example).")
+    return create_client(url, key)
 
-    client = create_client(url, key)
+
+def load_profile_from_supabase(user_id):
+    """Fetch a user's profile, saved equipment and points from Supabase."""
+    client = supabase_client()
     # Equipment lives in user_preferences and points in user_gamification (one row per user each).
     response = (
         client.table("profiles")
@@ -152,6 +159,7 @@ def profile_from_supabase_row(row):
         "fitness_goal": row["fitness_goal"],
         "workout_location": row["workout_location"],
         "workout_frequency": row["workout_frequency"],
+        "workout_preferences": row.get("workout_preferences") or [],
         "equipment": sorted({item.strip().lower() for item in preferences.get("available_equipment") or []}),
         "points": int(gamification.get("total_xp") or 0),  # no row until the user earns points
     }
@@ -180,8 +188,12 @@ def muscle_group(exercise):
     return "Full Body"
 
 
-def recommend_exercises(profile, exercises):
-    """Return up to PER_GROUP matching exercises per muscle group."""
+def recommend_exercises(profile, exercises, model=None):
+    """Return up to PER_GROUP matching exercises per muscle group.
+
+    With a trained XGBoost model (see exercise_ranker.py), each group is ordered by the user's
+    predicted chance of completing it; the rule-based order breaks ties and is used without one.
+    """
     level = LEVEL_RANK[profile["fitness_level"]]
     categories = GOAL_CATEGORIES[profile["fitness_goal"]]
     groups = {}
@@ -193,6 +205,10 @@ def recommend_exercises(profile, exercises):
     for group, matches in groups.items():
         # Closest to the user's level first, compound movements before isolation.
         matches.sort(key=lambda e: (-LEVEL_RANK[e["level"]], e["mechanic"] != "compound", e["name"]))
+        if model is not None:
+            predicted = exercise_ranker.scores(model, profile, matches)
+            # sorted() is stable, so equal scores keep the rule-based order.
+            matches = [e for _, e in sorted(zip(predicted, matches), key=lambda pair: -pair[0])]
         result[group] = matches[:PER_GROUP]
     return result
 
@@ -228,7 +244,11 @@ def main():
     except LookupError as error:
         print(error)
         return
-    print_workout(profile, recommend_exercises(profile, load_exercises()))
+    model = exercise_ranker.load_model()
+    print_workout(profile, recommend_exercises(profile, load_exercises(), model))
+    print("\nOrdered by the XGBoost ranker." if model else
+          "\nNo trained ranker yet (python exercise_ranker.py train); using the rule-based order.")
+    print(progress_forecast.format_forecast(progress_forecast.forecast_from_supabase(supabase_client(), user_id)))
 
 
 if __name__ == "__main__":
