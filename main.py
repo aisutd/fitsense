@@ -2,7 +2,7 @@
 
 Edit the three settings below, then run. No command line arguments are needed.
 
-    ACTION = "forecast"  graph and print one user's forecast (the XGBoost-corrected weight forecast)
+    ACTION = "forecast"  print one user's forecast (the XGBoost-corrected weight forecast)
     ACTION = "weekly"    save a forecast for every user to the progress_forecasts table
     ACTION = "train"     retrain the XGBoost weight model on real users from Supabase
 
@@ -54,26 +54,14 @@ def ensure_model():
     print("(Simulated data: this shows the pipeline works, not accuracy on real people.)\n")
 
 
-def show_chart(path):
-    """Open the graph: in VS Code if the `code` command exists, otherwise the system image viewer."""
-    if pf.open_in_vscode(path):
-        return
-    import webbrowser
-
-    webbrowser.open(Path(path).resolve().as_uri())
-
-
 def forecast_one(client, user_id):
     forecasts = pf.forecast_from_supabase(client, user_id)
-    profile = pf.fetch_all(client, "profiles", "user_id, name", "user_id", user_id)[0]
-    path = pf.write_chart(user_id, forecasts, profile.get("name"))
     print(pf.format_forecast(forecasts))
     weight = forecasts.get("weight_kg")
     if weight is not None and "baseline_predictions" not in weight:
         print(f"\nNote: the XGBoost correction needs {wfm.MIN_WEEKS_FOR_MODEL}+ weeks of logged weights; "
               f"this user has {weight['weeks_of_data']}, so the plain linear forecast is shown.")
-    print(f"\nGraph saved to {path}")
-    show_chart(path)
+    print('\nTo store forecasts in the progress_forecasts table, run ACTION = "weekly".')
 
 
 def main():
