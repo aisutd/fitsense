@@ -38,6 +38,8 @@ sys.path.insert(0, str(BASE_DIR / "backend"))
 from app import healthscore as hs  # noqa: E402  (pure functions; healthscore_repo loads lazily)
 
 MODEL_VERSION = "linreg-weekly-v1"
+# Weight forecasts corrected by the XGBoost model in weight_forecast_model.py.
+ML_MODEL_VERSION = "linreg+xgb-weekly-v1"
 HORIZONS = (1, 4, 12)  # weeks ahead of the last completed week
 # A week this many weeks old counts half as much as the most recent one.
 WEEK_HALF_LIFE = 4.0
@@ -184,14 +186,16 @@ def forecast_health(weeks, weights, origin):
     }
 
 
-def forecast_user(profile, history, today, workout_days=None, health=None):
+def forecast_user(profile, history, today, workout_days=None, health=None, weight_model=None, use_ml=True):
     """Forecasts for one user, keyed by prediction_type. Metrics with no data are left out.
 
     profile is a raw Supabase profiles row; history maps body_measurements, workout_logs and
     activity_logs to that user's rows. workout_days is the planned workouts per week (the
     HealthScore's source: plan, then preferences, then onboarding); it defaults to the
     profile's workout_frequency. health is {"weeks": [(Monday, result)], "weights": {...}}
-    from health_context, or None to skip the HealthScore.
+    from health_context, or None to skip the HealthScore. The weight forecast is corrected by
+    weight_model (an XGBoost model from weight_forecast_model.py) or, when use_ml is true and none
+    is given, by the saved model if one exists; use_ml=False gives the plain baseline.
     """
     origin = last_complete_week(today)
     workout_days = workout_days or profile["workout_frequency"]
@@ -227,6 +231,13 @@ def forecast_user(profile, history, today, workout_days=None, health=None):
     if points:
         result["daily_steps"] = forecast("daily_steps", *fit_trend(points, 0.0), points, origin)
 
+    if use_ml and "weight_kg" in result:
+        weight_model = weight_model or default_weight_model()
+        if weight_model is not None:
+            import weight_forecast_model
+
+            weight_forecast_model.apply(weight_model, profile, result, origin)
+
     if health:
         health_score = forecast_health(health["weeks"], health["weights"], origin)
         if health_score:
@@ -234,12 +245,19 @@ def forecast_user(profile, history, today, workout_days=None, health=None):
     return result
 
 
+def default_weight_model():
+    """The saved XGBoost weight model, or None until `python weight_forecast_model.py train` has run."""
+    import weight_forecast_model
+
+    return weight_forecast_model.load_model()
+
+
 def forecast_rows(user_id, forecasts):
     """progress_forecasts rows for one user: one per metric and horizon."""
     results = list(forecasts.values()) + list(forecasts.get("health_score", {}).get("categories", {}).values())
     return [
         {"user_id": user_id, "prediction_type": result["metric"], "predicted_value": round(value, 2),
-         "target_date": target.isoformat(), "model_version": MODEL_VERSION}
+         "target_date": target.isoformat(), "model_version": result.get("model_version", MODEL_VERSION)}
         for result in results
         for target, value in result["predictions"]
     ]
@@ -303,7 +321,7 @@ def run_weekly(client, today=None, dry_run=False, context=health_context):
     done = {
         row["user_id"]
         for row in fetch_all(client, "progress_forecasts", "user_id, generated_at, model_version", "forecast_id")
-        if row["model_version"] == MODEL_VERSION and to_date(row["generated_at"]) >= this_week
+        if row["model_version"] in (MODEL_VERSION, ML_MODEL_VERSION) and to_date(row["generated_at"]) >= this_week
     }
     history = load_history(client)
     rows = []
@@ -318,7 +336,9 @@ def run_weekly(client, today=None, dry_run=False, context=health_context):
 
 
 def format_forecast(forecasts):
-    lines = ["\n--- Forecast (linear regression, refit weekly) ---"]
+    corrected = "baseline_predictions" in forecasts.get("weight_kg", {})
+    lines = ["\n--- Forecast (linear regression" + (" + XGBoost weight correction" if corrected else "")
+             + ", refit weekly) ---"]
     for metric, (label, unit, _, _) in METRICS.items():
         result = forecasts.get(metric)
         if result is None:
@@ -332,6 +352,10 @@ def format_forecast(forecasts):
         if "adherence" in result:
             line += f"; assumes {result['adherence']:.0%} of planned workouts"
         lines.append(line)
+        if "baseline_predictions" in result:
+            base = ", ".join(f"{value:.1f}" for _, value in result["baseline_predictions"])
+            lines.append(f"  Linear baseline alone: {base} kg; XGBoost moved it by "
+                         + ", ".join(f"{fix:+.1f}" for fix in result["ml_corrections"]) + " kg")
         for category, part in result.get("categories", {}).items():
             lines.append(f"  {category.title()}: {part['level']:.0f} now -> "
                          f"{part['predictions'][-1][1]:.0f} in {HORIZONS[-1]} wk "

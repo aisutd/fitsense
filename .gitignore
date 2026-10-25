@@ -10,3 +10,6 @@ charts/
 # seed_week_one.py undo record
 seed_week_one.ids.json
 dist/
+
+# trained on simulated or real user data; rebuild with weight_forecast_model.py train
+models/weight_forecast.json

@@ -5,9 +5,12 @@ from datetime import date, timedelta
 import tempfile
 import unittest
 
+import numpy as np
+
 import exercise_ranker as ranker
 import progress_forecast as forecast
 import seed_week_one as seed
+import weight_forecast_model as wfm
 import weekly_plan as plans
 from app import healthscore as hs  # progress_forecast puts backend/ on the path
 
@@ -530,6 +533,98 @@ class ForecastTests(unittest.TestCase):
         text = forecast.format_forecast(forecast.forecast_user(self.profile(), self.history(), TODAY))
         self.assertIn('Weight: 80.0 kg now', text)
         self.assertIn('HealthScore: no data yet', text)
+
+
+class WeightModelTests(unittest.TestCase):
+    """The XGBoost correction on top of the linear baseline (weight_forecast_model.py)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.grouped = wfm.synthetic_rows(n_users=40, seed=1)
+        train_rows, validation_rows = wfm.split_by_user(cls.grouped)
+        cls.model = wfm.train(train_rows, validation_rows)
+        cls.validation = validation_rows
+
+    def profile(self, **changes):
+        return {'user_id': 'u1', 'created_at': weeks_ago(11) + 'T08:00:00+00:00', 'weight_kg': 80.0, 'age': 30,
+                'fitness_goal': 'lose_weight', 'fitness_level': 'beginner', 'workout_frequency': 3, **changes}
+
+    def history(self, weights):
+        return {'body_measurements': [{'recorded_at': weeks_ago(n) + 'T07:00:00+00:00', 'weight_kg': w}
+                                      for n, w in weights],
+                'workout_logs': [{'workout_date': weeks_ago(n, day), 'completion_status': 'completed'}
+                                 for n in range(12) for day in range(3)],
+                'activity_logs': []}
+
+    def test_feature_rows_match_the_feature_names(self):
+        rows = [row for _, rows in self.grouped for row in rows]
+        self.assertGreater(len(rows), 300)
+        self.assertTrue(all(len(features) == len(wfm.FEATURE_NAMES) for features, *_ in rows))
+
+    def test_features_only_use_data_the_baseline_had(self):
+        profile, history = wfm.synthetic_user(np.random.default_rng(3), date(2026, 10, 19), 'sim')
+        today = date(2026, 8, 17)  # the forecast may only see weeks that ended before this Monday
+        origin = forecast.last_complete_week(today)
+
+        def features(hist):
+            result = forecast.forecast_user(profile, hist, today, use_ml=False)
+            return wfm.user_features(profile, result, origin)
+
+        future = {table: [{**row, **({'weight_kg': row['weight_kg'] + 50} if 'weight_kg' in row else {'steps': 99999})}
+                          if pf_date(next(v for k, v in row.items() if k.endswith(('_at', '_date')))) >= today else row
+                          for row in rows]
+                  for table, rows in history.items()}
+        self.assertNotEqual(future['body_measurements'], history['body_measurements'])
+        self.assertEqual(features(history), features(future))
+
+    def test_model_beats_the_baseline_on_held_out_users(self):
+        report = wfm.evaluate(self.model, self.validation)
+        self.assertEqual(set(report), set(forecast.HORIZONS))
+        base, ml, _ = report[12]
+        self.assertLess(ml, base)
+
+    def test_apply_corrects_and_keeps_the_baseline(self):
+        history = self.history([(n, 80 + 0.3 * n) for n in range(8)])
+        plain = forecast.forecast_user(self.profile(), history, TODAY, use_ml=False)
+        result = forecast.forecast_user(self.profile(), history, TODAY, weight_model=self.model)
+        weight = result['weight_kg']
+        self.assertEqual(weight['baseline_predictions'], plain['weight_kg']['predictions'])
+        self.assertEqual(weight['model_version'], forecast.ML_MODEL_VERSION)
+        self.assertEqual(len(weight['ml_corrections']), len(forecast.HORIZONS))
+        for h, fix in zip(forecast.HORIZONS, weight['ml_corrections']):
+            self.assertLessEqual(abs(fix), max(1.0, wfm.MAX_CORRECTION_KG_PER_WEEK * h))
+        self.assertIn('XGBoost', forecast.format_forecast(result))
+        self.assertNotIn('model_version', plain['weight_kg'])
+        rows = forecast.forecast_rows('u1', result)
+        self.assertEqual({r['model_version'] for r in rows if r['prediction_type'] == 'weight_kg'},
+                         {forecast.ML_MODEL_VERSION})
+        self.assertEqual({r['model_version'] for r in rows if r['prediction_type'] != 'weight_kg'},
+                         {forecast.MODEL_VERSION})
+
+    def test_new_users_keep_the_plain_baseline(self):
+        profile = self.profile(created_at=TODAY.isoformat())
+        result = forecast.forecast_user(profile, self.history([]), TODAY, weight_model=self.model)
+        self.assertNotIn('baseline_predictions', result['weight_kg'])
+        self.assertAlmostEqual(result['weight_kg']['predictions'][0][1], 79.5)
+
+    def test_no_saved_model_means_baseline_only(self):
+        history = self.history([(n, 80 + 0.3 * n) for n in range(8)])
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertIsNone(wfm.load_model(Path(folder) / 'missing.json'))
+
+    def test_model_survives_save_and_load(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'models' / 'weight_forecast.json'
+            wfm.save_model(self.model, path)
+            loaded = wfm.load_model(path)
+        shared = wfm.user_features(self.profile(), forecast.forecast_user(
+            self.profile(), self.history([(n, 80 + 0.3 * n) for n in range(8)]), TODAY, use_ml=False),
+            forecast.last_complete_week(TODAY))
+        self.assertEqual(wfm.corrections(self.model, shared), wfm.corrections(loaded, shared))
+
+
+def pf_date(value):
+    return date.fromisoformat(str(value)[:10])
 
 
 class WeeklyPlanTests(unittest.TestCase):
