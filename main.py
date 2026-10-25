@@ -1,38 +1,23 @@
-"""FitSense forecasting in one file: open it and press Run (the play button in VS Code).
-
-Edit the three settings below, then run. No command line arguments are needed.
-
-    ACTION = "forecast"  print one user's forecast (the XGBoost-corrected weight forecast)
-    ACTION = "weekly"    save a forecast for every user to the progress_forecasts table
-    ACTION = "train"     retrain the XGBoost weight model on real users from Supabase
-
-The first run trains the model on simulated users if no model file exists yet, so it works
-straight away. Real weigh-ins make it better: run ACTION = "train" once users have logged weight.
-"""
-
 import sys
 from pathlib import Path
 
-# ---- settings ---------------------------------------------------------------------------------
 ACTION = "forecast"
-WHO = "Grace"  # a name from USERS below, or paste any user_id
-DRY_RUN = True  # for "weekly": True only counts the rows, False saves them
-# -----------------------------------------------------------------------------------------------
+WHO = "Grace"
+DRY_RUN = True
 
 USERS = {
-    "Grace": "f449eafd-7993-4a4b-ad52-8adb9fef3270",  # completed week 1
-    "James": "bd0b181f-7375-4040-a928-de0a4e21e19d",  # missed workouts in week 1
+    "Grace": "f449eafd-7993-4a4b-ad52-8adb9fef3270",
+    "James": "bd0b181f-7375-4040-a928-de0a4e21e19d",
 }
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
-import progress_forecast as pf  # noqa: E402
-import weight_forecast_model as wfm  # noqa: E402
+import progress_forecast as pf
+import weight_forecast_model as wfm
 
 
 def connect():
-    """A Supabase client built from SUPABASE_URL and SUPABASE_KEY in .env."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("recommender", BASE_DIR / "Fitsense-Issue-5.py")
@@ -42,7 +27,6 @@ def connect():
 
 
 def ensure_model():
-    """Make sure a weight model exists, bootstrapping one on simulated users the first time."""
     if wfm.MODEL_PATH.exists():
         return
     print("No weight model yet: training one on simulated users (about 10 seconds)...")

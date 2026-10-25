@@ -498,37 +498,6 @@ class ForecastTests(unittest.TestCase):
         self.assertTrue(forecast.run_weekly(client, TODAY, dry_run=True, context=self.no_health))
         self.assertEqual(client.tables['progress_forecasts'], [])
 
-    def test_chart_lines_join_logged_weeks_to_the_forecast(self):
-        history = self.history(weights=[(1, 81.0), (0, 80.0)], workouts_per_week=3)
-        logged, future = forecast.chart_lines(forecast.forecast_user(self.profile(), history, TODAY)['weight_kg'])
-        self.assertEqual(logged, [(date(2026, 10, 5), 81.0), (date(2026, 10, 12), 80.0)])
-        # The dashed line starts at the last logged week, then each forecast week's Monday.
-        self.assertEqual([d for d, _ in future],
-                         [date(2026, 10, 12), date(2026, 10, 19), date(2026, 11, 9), date(2027, 1, 4)])
-        new_user = forecast.forecast_user(self.profile(created_at=TODAY.isoformat()), self.history(), TODAY)
-        logged, future = forecast.chart_lines(new_user['workouts_per_week'])
-        self.assertEqual(logged, [])
-        self.assertEqual(future[0], (LAST_MONDAY, 3.0))  # from the fitted level
-
-    def test_flat_line_gets_a_visible_axis(self):
-        lo, hi = forecast.y_limits('weight_kg', [68.5, 68.50000000000001])
-        self.assertGreater(hi - lo, 1)
-        self.assertEqual(forecast.y_limits('health_score', [90, 100])[1], 100.0)
-        lo, hi = forecast.y_limits('daily_steps', [0, 0])
-        self.assertTrue(-0.1 < lo < 0 < hi)  # zero stays above the bottom edge
-
-    def test_write_chart_saves_a_png(self):
-        health = {'weeks': self.health_weeks(workouts=(50, 5), sleep=(90, 0)), 'weights': hs.DEFAULT_WEIGHTS}
-        full = forecast.forecast_user(self.profile(), self.history([(1, 81.0), (0, 80.0)], workouts_per_week=3,
-                                                                    steps=[(0, 7000)]), TODAY, health=health)
-        empty = forecast.forecast_user(self.profile(weight_kg=None, created_at=TODAY.isoformat()),
-                                       self.history(), TODAY)
-        with tempfile.TemporaryDirectory() as folder:
-            for user_id, result in [('full', full), ('empty', empty)]:
-                path = forecast.write_chart(user_id, result, 'Sam', folder)
-                self.assertEqual(path, Path(folder) / f'forecast-{user_id}.png')
-                self.assertEqual(path.read_bytes()[:8], b'\x89PNG\r\n\x1a\n')
-
     def test_format_forecast(self):
         text = forecast.format_forecast(forecast.forecast_user(self.profile(), self.history(), TODAY))
         self.assertIn('Weight: 80.0 kg now', text)
@@ -536,8 +505,6 @@ class ForecastTests(unittest.TestCase):
 
 
 class WeightModelTests(unittest.TestCase):
-    """The XGBoost correction on top of the linear baseline (weight_forecast_model.py)."""
-
     @classmethod
     def setUpClass(cls):
         cls.grouped = wfm.synthetic_rows(n_users=40, seed=1)
@@ -563,7 +530,7 @@ class WeightModelTests(unittest.TestCase):
 
     def test_features_only_use_data_the_baseline_had(self):
         profile, history = wfm.synthetic_user(np.random.default_rng(3), date(2026, 10, 19), 'sim')
-        today = date(2026, 8, 17)  # the forecast may only see weeks that ended before this Monday
+        today = date(2026, 8, 17)
         origin = forecast.last_complete_week(today)
 
         def features(hist):
@@ -608,7 +575,6 @@ class WeightModelTests(unittest.TestCase):
         self.assertAlmostEqual(result['weight_kg']['predictions'][0][1], 79.5)
 
     def test_no_saved_model_means_baseline_only(self):
-        history = self.history([(n, 80 + 0.3 * n) for n in range(8)])
         with tempfile.TemporaryDirectory() as folder:
             self.assertIsNone(wfm.load_model(Path(folder) / 'missing.json'))
 

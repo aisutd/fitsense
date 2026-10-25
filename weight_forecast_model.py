@@ -1,28 +1,3 @@
-"""XGBoost correction for the weekly weight forecast in progress_forecast.py.
-
-The baseline (a recency-weighted linear regression pulled toward a prior from the user's goal)
-extrapolates a straight line. Real weight loss is not straight: it slows as people plateau, and
-it depends on whether the person keeps training. This model learns that error:
-
-    final forecast = baseline forecast + XGBoost(predicted baseline error)
-
-Each training row is one (user, week, horizon): the features describe what the baseline saw at
-that week (its level and slope, adherence, recent trend, noise, profile), and the label is how
-far the baseline was from the weekly weight the user really logged `horizon` weeks later. Rows
-come from either of two places, in the same format:
-
-- Supabase: every past week of every user with enough weigh-ins (needs real users).
-- A simulator (`synthetic_user`): energy-balance style weight change with plateaus and
-  adherence drop-off plus measurement noise. It only bootstraps the model before real data
-  exists, and the forecast is honest about it: `model_version` says which model made it.
-
-    python weight_forecast_model.py train               # bootstrap on simulated users, save MODEL_PATH
-    python weight_forecast_model.py train --supabase    # train on real users (needs MIN_TRAINING_ROWS)
-    python weight_forecast_model.py evaluate            # held-out MAE: baseline vs baseline + XGBoost
-
-Until a model file exists, progress_forecast.py uses the baseline alone.
-"""
-
 from datetime import date, timedelta
 from pathlib import Path
 import sys
@@ -33,13 +8,8 @@ import progress_forecast as pf
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "models" / "weight_forecast.json"
-# Below this many (user, week, horizon) rows a model mostly memorizes noise.
 MIN_TRAINING_ROWS = 300
-# A user needs this many logged weeks of weight before the model is applied; with fewer, the
-# baseline is just the profile prior and there is nothing for the model to learn from.
 MIN_WEEKS_FOR_MODEL = 2
-# The model can move a forecast by at most this many kg per week ahead (never less than 1 kg),
-# so a bad extrapolation cannot produce an absurd weight.
 MAX_CORRECTION_KG_PER_WEEK = 0.5
 
 LEVELS = {"beginner": 0, "intermediate": 1, "advanced": 2}
@@ -53,10 +23,7 @@ FEATURE_NAMES = (
 )
 
 
-# --- features ----------------------------------------------------------------------------------
-
 def _recent_slope(points, window=3):
-    """kg per week over the last few logged weeks, or 0 with fewer than two."""
     recent = points[-window:]
     if len(recent) < 2 or recent[-1][0] == recent[0][0]:
         return 0.0
@@ -64,7 +31,6 @@ def _recent_slope(points, window=3):
 
 
 def _volatility(points):
-    """Standard deviation of the week-to-week changes: how noisy this user's scale is."""
     values = [y for _, y in points]
     return float(np.std(np.diff(values))) if len(values) >= 3 else 0.0
 
@@ -75,11 +41,6 @@ def _mean_of_last(history, n=4):
 
 
 def user_features(profile, result, origin):
-    """The horizon-independent part of a feature row, in FEATURE_NAMES order after `horizon`.
-
-    result is progress_forecast.forecast_user's output, so everything here was visible to the
-    baseline at forecast time; nothing from the weeks being predicted can leak in.
-    """
     weight = result["weight_kg"]
     weekly = [(pf.week_index(monday, origin), value) for monday, value in weight["history"]]
     prior = pf.goal_weight_slope(profile, weight["level"]) * weight.get("adherence", 1.0)
@@ -103,10 +64,7 @@ def feature_row(shared, horizon):
     return [float(horizon)] + shared
 
 
-# --- training rows -----------------------------------------------------------------------------
-
 def actual_weekly_weights(rows):
-    """{Monday: mean logged weight that week}, from body_measurements rows."""
     weeks = {}
     for row in rows:
         if row.get("weight_kg") is not None and row.get("recorded_at"):
@@ -115,12 +73,6 @@ def actual_weekly_weights(rows):
 
 
 def training_rows(profile, history, end_day):
-    """[(features, baseline error, baseline prediction, actual)] for one user's past weeks.
-
-    The baseline is re-run as of every Monday up to end_day, using only the data it would have
-    had then (progress_forecast ignores anything after the last completed week). The error is
-    actual weekly weight minus the baseline's prediction, for every horizon whose week has data.
-    """
     actual = actual_weekly_weights(history["body_measurements"])
     if not actual:
         return []
@@ -141,7 +93,6 @@ def training_rows(profile, history, end_day):
 
 
 def training_rows_from_supabase(client):
-    """Training rows for every real user, grouped as [(user_id, rows)]."""
     history = pf.load_history(client)
     today = date.today()
     out = []
@@ -152,16 +103,7 @@ def training_rows_from_supabase(client):
     return out
 
 
-# --- simulated users (bootstrap only) ----------------------------------------------------------
-
 def synthetic_user(rng, end_monday, user_id):
-    """A simulated (profile, history) pair in the shape of Supabase's rows.
-
-    True weight follows the goal's expected weekly change, scaled by how much the person trains
-    that week, how strongly they respond (varies with age and level), and a plateau that makes
-    progress slow over time. Training adherence wanders and sometimes collapses, as it does for
-    real people. The scale adds noise to every weigh-in. None of this is real user data.
-    """
     weeks = int(rng.integers(8, 31))
     start = end_monday - timedelta(days=7 * (weeks - 1))
     goal = str(rng.choice(["lose_weight", "build_muscle", "general_fitness"], p=[0.5, 0.3, 0.2]))
@@ -202,7 +144,6 @@ def synthetic_user(rng, end_monday, user_id):
 
 
 def synthetic_rows(n_users=300, seed=0, end_monday=None):
-    """[(user_id, rows)] for n_users simulated people."""
     rng = np.random.default_rng(seed)
     end_monday = end_monday or pf.week_start(date(2026, 10, 19))
     out = []
@@ -212,14 +153,11 @@ def synthetic_rows(n_users=300, seed=0, end_monday=None):
     return out
 
 
-# --- model -------------------------------------------------------------------------------------
-
 PARAMS = {"objective": "reg:squarederror", "eval_metric": "mae", "max_depth": 3, "eta": 0.05,
           "subsample": 0.8, "colsample_bytree": 0.8, "min_child_weight": 10, "lambda": 5.0, "seed": 0}
 
 
 def split_by_user(grouped, validation_share=0.2):
-    """(train rows, validation rows). Whole users go to one side so no one is in both."""
     cut = max(1, int(len(grouped) * (1 - validation_share)))
     flat = lambda groups: [row for _, rows in groups for row in rows]
     return flat(grouped[:cut]), flat(grouped[cut:])
@@ -234,7 +172,6 @@ def _matrix(rows):
 
 
 def train(train_rows, validation_rows=None):
-    """Fit the error model. With validation rows, stops adding trees once held-out MAE stops improving."""
     import xgboost as xgb
 
     if len({r[1] > 0 for r in train_rows}) < 2:
@@ -253,7 +190,6 @@ def save_model(model, path=MODEL_PATH):
 
 
 def load_model(path=MODEL_PATH):
-    """The saved model, or None if none has been trained yet (or XGBoost isn't installed)."""
     if not path.exists():
         return None
     try:
@@ -264,7 +200,6 @@ def load_model(path=MODEL_PATH):
 
 
 def corrections(model, shared):
-    """Predicted baseline error in kg for each horizon, limited to a sensible range."""
     import xgboost as xgb
 
     X = np.array([feature_row(shared, h) for h in pf.HORIZONS], dtype=float)
@@ -274,11 +209,6 @@ def corrections(model, shared):
 
 
 def apply(model, profile, result, origin):
-    """Adjust result["weight_kg"] in place with the model. Returns True if it was applied.
-
-    The baseline's own numbers stay in result["weight_kg"]["baseline_predictions"] so the ML
-    contribution can always be inspected, and model_version says which model produced the rows.
-    """
     weight = result.get("weight_kg")
     if model is None or not weight or weight["weeks_of_data"] < MIN_WEEKS_FOR_MODEL:
         return False
@@ -291,10 +221,7 @@ def apply(model, profile, result, origin):
     return True
 
 
-# --- evaluation --------------------------------------------------------------------------------
-
 def evaluate(model, rows):
-    """Mean absolute error in kg per horizon: {horizon: (baseline MAE, with model MAE, rows)}."""
     import xgboost as xgb
 
     X = np.array([r[0] for r in rows], dtype=float)

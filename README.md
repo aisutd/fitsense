@@ -110,7 +110,7 @@ Two seeded test users whose plan for the week of Oct 19 was adapted from their w
 source .venv/bin/activate
 python Fitsense-Issue-5.py --user f449eafd-7993-4a4b-ad52-8adb9fef3270   # Grace: completed week 1, reps 3x6 -> 3x8
 python Fitsense-Issue-5.py --user bd0b181f-7375-4040-a928-de0a4e21e19d   # James: missed workouts, 5 -> 4 days
-python progress_forecast.py --user f449eafd-7993-4a4b-ad52-8adb9fef3270  # Grace's forecast graph
+python progress_forecast.py --user f449eafd-7993-4a4b-ad52-8adb9fef3270  # Grace's forecast
 ```
 
 This works through Sunday, Oct 25. After that each user gets a new plan, and since no logs are
@@ -144,7 +144,7 @@ current, unfinished week is left out) and fit with a weighted linear regression:
 in sync until this branch is merged with `main`. They need `fastapi` (in `requirements.txt`).
 
 ```bash
-python progress_forecast.py --user <user_id>   # graph one user's forecast and open it in VS Code
+python progress_forecast.py --user <user_id>   # print one user's forecast
 python progress_forecast.py weekly --dry-run    # show how many rows the weekly run would save
 python progress_forecast.py weekly              # save forecasts for every user to progress_forecasts
 ```
@@ -183,11 +183,3 @@ noise). Its accuracy on that data shows the pipeline works and beats the baselin
 not evidence of accuracy on real people. Retrain with `--supabase` as users log weight, and compare
 the two models' held-out error before trusting the new one. The trained model file is git-ignored.
 
-`--user` saves `charts/forecast-<user_id>.png` (matplotlib) and opens it as a tab in VS Code
-with the `code` command; pass `--no-open` to only save it. There is one panel per metric: logged
-weeks as a solid line, the forecast as a dashed line in the shaded area, and under HealthScore
-each category's score now and in 12 weeks with its weight. It is styled like the website's HealthScore screen: the
-night palette, neon category frames, pixel-art icons copied from `src/icons.js`, and the VT323
-pixel font, bundled in `assets/fonts/` with its license (SIL Open Font License). `charts/` is git-ignored because the
-graphs contain users' data. If `code` isn't found, run **Shell Command: Install 'code' command in
-PATH** from VS Code's Command Palette.
