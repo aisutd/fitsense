@@ -16,8 +16,17 @@ TABLE = "profiles"
 def save_profile(user_id: UUID, profile: ProfileIn, supabase: Client = Depends(get_supabase)):
     """Create or replace the onboarding profile for a user."""
     row = {"user_id": str(user_id), **profile.model_dump(mode="json")}
+    # Workout fields also live in user_preferences (data model); keep them in sync
+    # until the profile columns are retired. available_equipment is left untouched.
+    preferences = {
+        "user_id": row["user_id"],
+        "workout_days_per_week": row["workout_frequency"],
+        "workout_location": row["workout_location"],
+        "preferred_workout_types": row["workout_preferences"],
+    }
     try:
         response = supabase.table(TABLE).upsert(row, on_conflict="user_id").execute()
+        supabase.table("user_preferences").upsert(preferences, on_conflict="user_id").execute()
     except APIError as e:
         raise HTTPException(status_code=502, detail=f"Failed to save profile: {e.message}")
     if not response.data:

@@ -12,3 +12,24 @@ dist/
 
 # trained on simulated or real user data; rebuild with weight_forecast_model.py train
 models/weight_forecast.json
+# Secrets (.env.example is committed)
+.env
+
+# Dependencies and builds
+node_modules/
+dist/
+venv/
+.venv/
+
+# Python caches
+__pycache__/
+.pytest_cache/
+
+# Food model training (regenerate with backend/ml/food_ner, see its README)
+backend/ml/food_ner/corpus/
+backend/ml/food_ner/output/
+
+# Local editor and tool settings
+.claude/
+.devcontainer/
+.DS_Store
