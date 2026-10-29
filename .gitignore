@@ -1,3 +1,17 @@
+node_modules/
+venv/
+.env
+.DS_Store
+__pycache__/
+.pytest_cache/
+.venv/
+
+# seed_week_one.py undo record
+seed_week_one.ids.json
+dist/
+
+# trained on simulated or real user data; rebuild with weight_forecast_model.py train
+models/weight_forecast.json
 # Secrets (.env.example is committed)
 .env
 

@@ -1,0 +1,4 @@
+numpy
+supabase
+xgboost
+fastapi
