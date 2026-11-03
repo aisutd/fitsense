@@ -1,4 +1,4 @@
-"""Food logging endpoints: describe a meal, review the estimate, confirm it."""
+"""Food logging endpoints: describe a meal or pick foods from search, review the estimate, confirm it."""
 
 from datetime import date
 from functools import lru_cache
@@ -12,7 +12,8 @@ from supabase import Client
 from app.database import get_supabase
 from app.food import service
 from app.food.fdc import FdcClient, FdcError
-from app.schemas import AnalyzeMealIn, FoodSearchHit, MealItemAddIn, MealItemUpdateIn, MealOut
+from app.schemas import (AnalyzeMealIn, FoodSearchHit, FoodSuggestion, MealItemAddIn, MealItemUpdateIn, MealOut,
+                         MealStartIn)
 
 router = APIRouter(tags=["food logging"])
 
@@ -24,14 +25,15 @@ def _fdc_client() -> FdcClient:
     return FdcClient()
 
 
-def get_fdc() -> FdcClient:
+def get_fdc() -> FdcClient | None:
+    """The FDC API is optional: foods come from the imported copy, the API only fills gaps."""
     try:
         return _fdc_client()
-    except FdcError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    except FdcError:
+        return None
 
 
-def get_catalog(supabase: Client = Depends(get_supabase), fdc: FdcClient = Depends(get_fdc)) -> service.Catalog:
+def get_catalog(supabase: Client = Depends(get_supabase), fdc: FdcClient | None = Depends(get_fdc)) -> service.Catalog:
     return service.Catalog(supabase, fdc)
 
 
@@ -54,6 +56,15 @@ def analyze_meal(user_id: UUID, body: AnalyzeMealIn, supabase: Client = Depends(
     """Turn a meal description into an *estimated* meal with ingredients and nutrition to review."""
     return _run(service.analyze, supabase, catalog, str(user_id), body.text, body.log_date,
                 body.meal_type.value if body.meal_type else None)
+
+
+@router.post("/meals/{user_id}/start", response_model=MealOut)
+def start_meal(user_id: UUID, body: MealStartIn, supabase: Client = Depends(get_supabase),
+               catalog: service.Catalog = Depends(get_catalog)):
+    """Start an *estimated* meal from foods picked in the search box."""
+    return _run(service.start_meal, supabase, catalog, str(user_id), body.log_date,
+                body.meal_type.value if body.meal_type else None,
+                [i.model_dump(exclude_unset=True) for i in body.items])
 
 
 @router.get("/meals", response_model=list[MealOut])
@@ -79,7 +90,8 @@ def update_meal_item(meal_id: UUID, item_id: UUID, body: MealItemUpdateIn, supab
 @router.post("/meals/{meal_id}/items", response_model=MealOut)
 def add_meal_item(meal_id: UUID, body: MealItemAddIn, supabase: Client = Depends(get_supabase),
                   catalog: service.Catalog = Depends(get_catalog)):
-    return _run(service.add_item, supabase, catalog, str(meal_id), body.text, body.quantity, body.unit)
+    """Add an ingredient: typed text ("2 tbsp sour cream") or a food picked from search (fdc_id)."""
+    return _run(service.add_item, supabase, catalog, str(meal_id), body.text, body.quantity, body.unit, body.fdc_id)
 
 
 @router.delete("/meals/{meal_id}/items/{item_id}", response_model=MealOut)
@@ -101,7 +113,13 @@ def discard_meal(meal_id: UUID, supabase: Client = Depends(get_supabase), catalo
 
 @router.get("/foods/search", response_model=list[FoodSearchHit])
 def search_foods(q: str = Query(min_length=2, max_length=100), catalog: service.Catalog = Depends(get_catalog)):
-    """Search FoodData Central (ranked, cached) to pick or swap a food."""
+    """Search USDA foods (ranked) to pick or swap a food."""
     hits = _run(catalog.search, q)
     return [{"fdc_id": h.fdc_id, "description": h.description, "data_type": h.data_type,
              "calories_per_100g": h.calories_per_100g} for h in hits]
+
+
+@router.get("/foods/suggest", response_model=list[FoodSuggestion])
+def suggest_foods(q: str = Query(min_length=1, max_length=100), catalog: service.Catalog = Depends(get_catalog)):
+    """Search-as-you-type: listed foods first, then USDA matches. Uses only the local copy (fast, no API)."""
+    return _run(catalog.suggest, q)

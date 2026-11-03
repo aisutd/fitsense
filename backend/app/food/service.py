@@ -1,6 +1,7 @@
-"""Food logging pipeline: text -> estimated meal (stored) -> player adjusts -> confirmed.
+"""Food logging pipeline: text or picked foods -> estimated meal (stored) -> player adjusts -> confirmed.
 
-Nutrition values come only from FoodData Central (cached in fdc_foods / fdc_food_portions).
+Nutrition values come only from FoodData Central: a local copy in fdc_foods / fdc_food_portions
+(loaded by app.food.fdc_import), with the FDC API as an optional fallback for anything missing.
 Confirmed meals feed the HealthScore's nutrition category and award meal_logged points.
 """
 
@@ -10,7 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from supabase import Client
 
 from app.food import lexicon, parser
-from app.food.fdc import FdcClient, FdcError, Food, Portion, SearchHit, description_confidence, rank_hits
+from app.food.fdc import FdcClient, FdcError, Food, Portion, SearchHit, _words, description_confidence, rank_hits
 from app.food.portions import nutrients, to_grams, unit_options
 from app.gamification import LEVEL_THRESHOLDS, POINTS, PointAction
 
@@ -18,7 +19,14 @@ CACHE_DAYS = 30
 REVIEW_BELOW = 0.6          # match confidence under this asks the player to check the food
 SEARCH_RESULTS = 10         # hits shown in the food picker
 SEARCH_CACHED = 25          # hits kept per cached query, re-ranked on read
+SEARCH_CANDIDATES = 150     # local matches re-ranked per search
+SUGGESTIONS = 8             # rows in the search-as-you-type dropdown
+NOT_IMPORTED = ("isn't in the local USDA food data. Load it with `python -m app.food.fdc_import` "
+                "(see backend/sql/007_food_search.sql) or set FDC_API_KEY to look foods up online.")
 NUTRIENT_KEYS = ("calories", "protein_g", "carbs_g", "fat_g")
+
+
+_LISTED_ROWS: dict[int, dict] = {}   # fdc_foods rows of foods.json entries (USDA values don't change)
 
 
 class MealError(Exception):
@@ -64,9 +72,9 @@ def _hit_dict(h: SearchHit) -> dict:
 # --- FDC cache ---------------------------------------------------------------------
 
 class Catalog:
-    """FoodData Central with a Supabase cache in front of it."""
+    """FoodData Central foods: the local copy in Supabase first, the FDC API (if configured) for the rest."""
 
-    def __init__(self, supabase: Client, fdc: FdcClient):
+    def __init__(self, supabase: Client, fdc: FdcClient | None):
         self.db = supabase
         self.fdc = fdc
         self._foods: dict[int, Food] = {}
@@ -75,7 +83,7 @@ class Catalog:
         if fdc_id in self._foods:
             return self._foods[fdc_id]
         rows = self.db.table("fdc_foods").select("*").eq("fdc_id", fdc_id).limit(1).execute().data
-        if rows and _fresh(rows[0].get("fetched_at")):
+        if rows and (rows[0].get("source") == "import" or _fresh(rows[0].get("fetched_at")) or self.fdc is None):
             r = rows[0]
             portions = self.db.table("fdc_food_portions").select("*").eq("fdc_id", fdc_id).execute().data
             food = Food(
@@ -86,9 +94,11 @@ class Catalog:
                 portions=[Portion(p["label"], float(p["gram_weight"]), float(p.get("amount") or 1), p.get("fdc_portion_id"))
                           for p in portions],
             )
-        else:
+        elif self.fdc is not None:
             food = self.fdc.food(fdc_id)
             self._store(food)
+        else:
+            raise MealError(503, f"Food {fdc_id} {NOT_IMPORTED}")
         self._foods[fdc_id] = food
         return food
 
@@ -109,8 +119,22 @@ class Catalog:
                 for p in food.portions
             ]).execute()
 
-    def search(self, query: str) -> list[SearchHit]:
+    def search(self, query: str, partial: bool = False, limit: int = SEARCH_RESULTS) -> list[SearchHit]:
+        """Ranked foods for a query. partial: the last word may be half typed (search box)."""
         key = lexicon.normalize(query)
+        words = _words(key)
+        if not words:
+            return []
+        rows = self.db.rpc("search_fdc_foods", {"words": words, "max_results": SEARCH_CANDIDATES}).execute().data
+        if rows:
+            hits = [SearchHit(r["fdc_id"], r["description"], r["data_type"] or "", float(r["calories_per_100g"]))
+                    for r in rows]
+            return rank_hits(key, hits, partial)[:limit]
+        if partial or self.fdc is None:
+            return []   # the API is too slow and rate-limited for typing; it's only a fallback for whole queries
+        return self._search_api(key)[:limit]
+
+    def _search_api(self, key: str) -> list[SearchHit]:
         rows = self.db.table("fdc_search_cache").select("*").eq("query", key).limit(1).execute().data
         if rows and _fresh(rows[0].get("fetched_at")):
             # re-ranked on read so ranking improvements apply to cached queries too
@@ -121,7 +145,38 @@ class Catalog:
         self.db.table("fdc_search_cache").upsert(
             {"query": key, "results": [_hit_dict(h) for h in hits], "fetched_at": _now()}, on_conflict="query"
         ).execute()
-        return hits[:SEARCH_RESULTS]
+        return hits
+
+    def suggest(self, query: str, limit: int = SUGGESTIONS) -> list[dict]:
+        """Search-as-you-type: foods from our list first (friendly names), then USDA matches."""
+        if len(lexicon.normalize(query)) < 2:
+            return []
+        listed = lexicon.suggest(query, limit=4)
+        rows = self._listed_rows([f.fdc_id for f, _ in listed])
+        out = [{"fdc_id": f.fdc_id, "name": label[0].upper() + label[1:],
+                "description": rows.get(f.fdc_id, {}).get("description") or f.fdc_description or f.name,
+                "data_type": rows.get(f.fdc_id, {}).get("data_type"),
+                "calories_per_100g": rows.get(f.fdc_id, {}).get("calories_per_100g"), "source": "list"}
+               for f, label in listed]
+        seen_ids = {o["fdc_id"] for o in out}
+        seen_names = {o["description"].lower() for o in out}
+        for h in self.search(query, partial=True, limit=limit * 2):
+            # FNDDS and SR Legacy both have e.g. "Broccoli, raw": show the better-ranked one only
+            if h.fdc_id not in seen_ids and h.description.lower() not in seen_names:
+                seen_ids.add(h.fdc_id)
+                seen_names.add(h.description.lower())
+                out.append({"fdc_id": h.fdc_id, "name": h.description, "description": h.description,
+                            "data_type": h.data_type, "calories_per_100g": h.calories_per_100g, "source": "usda"})
+        return out[:limit]
+
+    def _listed_rows(self, fdc_ids: list[int]) -> dict[int, dict]:
+        """Name/kcal of listed foods, kept in memory: they're shown on almost every keystroke."""
+        missing = [i for i in fdc_ids if i not in _LISTED_ROWS]
+        if missing:
+            rows = (self.db.table("fdc_foods").select("fdc_id, description, data_type, calories_per_100g")
+                    .in_("fdc_id", missing).execute().data)
+            _LISTED_ROWS.update({r["fdc_id"]: r for r in rows})
+        return {i: _LISTED_ROWS[i] for i in fdc_ids if i in _LISTED_ROWS}
 
     def resolve(self, item: parser.ParsedItem) -> Resolution:
         """Known foods use their pinned FDC id; anything else is searched."""
@@ -163,9 +218,22 @@ def _item_row(meal_id: str, text: str, quantity: float | None, unit: str | None,
             **nutrients(res.food, g.grams)}
 
 
+def _picked_display_name(names: list[str]) -> str:
+    names = list(dict.fromkeys(names))
+    if not names:
+        return "Meal"
+    title = " & ".join(n[0].upper() + n[1:] for n in names[:2]) + (" + more" if len(names) > 2 else "")
+    return title[:120]
+
+
 def _recalculate_totals(db: Client, meal_id: str) -> None:
-    items = db.table("meal_items").select("calories, protein_g, carbs_g, fat_g").eq("meal_id", meal_id).execute().data
+    items = (db.table("meal_items").select("ingredient_text, calories, protein_g, carbs_g, fat_g")
+             .eq("meal_id", meal_id).order("created_at").execute().data)
     totals = {k: round(sum(float(i[k] or 0) for i in items), 1) for k in NUTRIENT_KEYS}
+    meal = _meal_row(db, meal_id)
+    if not meal.get("raw_text"):
+        # built from picked foods: the name follows the ingredients (a described meal keeps its parsed name)
+        totals["display_name"] = _picked_display_name([i["ingredient_text"] for i in items])
     db.table("meal_entries").update(totals).eq("meal_id", meal_id).execute()
 
 
@@ -222,8 +290,12 @@ def update_item(db: Client, catalog: Catalog, meal_id: str, item_id: str, quanti
     if not rows:
         raise MealError(404, "Ingredient not found")
     item = rows[0]
+    text = item["ingredient_text"]
     if fdc_id is not None:
         res = Resolution(catalog.food(fdc_id), 1.0, item.get("alternatives") or [])   # the player picked it
+        old = catalog.food(item["fdc_id"]) if item.get("fdc_id") else None
+        if old is not None and text in (old.description, _picked_name(old)):
+            text = _picked_name(res.food)   # named after a picked food: follow the swap
     elif item.get("fdc_id"):
         res = Resolution(catalog.food(item["fdc_id"]), float(item.get("match_confidence") or 1.0), item.get("alternatives") or [])
     else:
@@ -232,23 +304,58 @@ def update_item(db: Client, catalog: Catalog, meal_id: str, item_id: str, quanti
     new_qty = quantity if quantity is not None else float(item["quantity"])
     # Editing an ingredient makes it the player's own (no longer "assumed"); picking a food
     # (even the same one, via "looks right") clears the low-confidence flag.
-    row = _item_row(meal_id, item["ingredient_text"], new_qty, new_unit, res, False, item.get("source_dish"))
+    row = _item_row(meal_id, text, new_qty, new_unit, res, False, item.get("source_dish"))
     row.pop("meal_id")
     db.table("meal_items").update(row).eq("meal_item_id", item_id).execute()
     _recalculate_totals(db, meal_id)
     return load_meal(db, catalog, meal_id)
 
 
-def add_item(db: Client, catalog: Catalog, meal_id: str, text: str, quantity: float | None, unit: str | None) -> dict:
-    _editable(db, meal_id)
+def _picked_name(food: Food) -> str:
+    """Name shown for a food picked from search: our friendly name if it's a listed food."""
+    listed = next((f.name for f in lexicon.foods().values() if f.fdc_id == food.fdc_id), None)
+    return listed or food.description
+
+
+def _new_item_row(catalog: Catalog, meal_id: str, text: str | None, quantity: float | None, unit: str | None,
+                  fdc_id: int | None) -> dict:
+    unit = None if unit == "count" else unit
+    if fdc_id is not None:
+        # picked from search: exactly this USDA food, no guessing
+        food = catalog.food(fdc_id)
+        return _item_row(meal_id, text or _picked_name(food), quantity, unit, Resolution(food, 1.0))
     if quantity is None and unit is None:
         item = parser.parse_ingredient(text)        # "2 tbsp sour cream" typed in one box
     else:
         known = lexicon.find_food(text)
-        item = parser.ParsedItem(text, quantity, None if unit == "count" else unit, known.name if known else None)
-    db.table("meal_items").insert(_item_row(meal_id, item.text, item.quantity, item.unit, catalog.resolve(item))).execute()
+        item = parser.ParsedItem(text, quantity, unit, known.name if known else None)
+    return _item_row(meal_id, item.text, item.quantity, item.unit, catalog.resolve(item))
+
+
+def add_item(db: Client, catalog: Catalog, meal_id: str, text: str | None, quantity: float | None, unit: str | None,
+             fdc_id: int | None = None) -> dict:
+    _editable(db, meal_id)
+    db.table("meal_items").insert(_new_item_row(catalog, meal_id, text, quantity, unit, fdc_id)).execute()
     _recalculate_totals(db, meal_id)
     return load_meal(db, catalog, meal_id)
+
+
+def start_meal(db: Client, catalog: Catalog, user_id: str, log_date: date, meal_type: str | None,
+               items: list[dict]) -> dict:
+    """A meal built from foods picked in the search box (no sentence to parse)."""
+    meal = db.table("meal_entries").insert({
+        "user_id": user_id, "log_date": log_date.isoformat(), "meal_type": meal_type, "raw_text": None,
+        "status": "estimated",
+    }).execute().data[0]
+    try:
+        rows = [_new_item_row(catalog, meal["meal_id"], i.get("text"), i.get("quantity"), i.get("unit"), i.get("fdc_id"))
+                for i in items]
+    except MealError:
+        db.table("meal_entries").delete().eq("meal_id", meal["meal_id"]).execute()
+        raise
+    db.table("meal_items").insert(rows).execute()
+    _recalculate_totals(db, meal["meal_id"])
+    return load_meal(db, catalog, meal["meal_id"])
 
 
 def delete_item(db: Client, catalog: Catalog, meal_id: str, item_id: str) -> dict:

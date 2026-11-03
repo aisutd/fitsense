@@ -5,10 +5,13 @@ import PixelCard from "../components/reactbits/PixelCard";
 import PixelIcon from "../components/PixelIcon";
 import ScoreRing from "../components/ScoreRing";
 import LogPanel from "../components/LogPanel";
-import { Logo } from "../ScreenLayout";
 import { ICONS, levelIcon } from "../icons";
-import { CATEGORIES, RANGES, scoreLabel, toViewModel } from "../data/healthScore";
-import { getHealthScore } from "../api";
+import { CATEGORIES, scoreLabel, toViewModel } from "../data/healthScore";
+import { getHealthScore, localToday } from "../api";
+import DateSwitcher from "../components/DateSwitcher";
+import DayLog from "../components/DayLog";
+import DashboardHeader from "../components/DashboardHeader";
+import GamificationPanel from "../components/GamificationPanel";
 
 const CATEGORY_ICONS = {
   nutrition: ICONS.apple,
@@ -37,26 +40,6 @@ const rise = (delay = 0) => ({
   animate: { opacity: 1, y: 0 },
   transition: { type: "spring", stiffness: 200, damping: 22, delay },
 });
-
-function RangeSelect({ value, onChange }) {
-  return (
-    <label className="px-frame flex items-center gap-3 bg-night-800/85 px-4 py-2 focus-within:[--frame:var(--color-cyan)]">
-      <PixelIcon icon={ICONS.calendar} size={22} />
-      <span className="sr-only">Time range</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="cursor-pointer bg-transparent pr-1 text-lg text-ink outline-none"
-      >
-        {RANGES.map((r) => (
-          <option key={r.id} value={r.id} className="bg-night-900">
-            {r.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 // Category card. `side` decides which edge the connector line to the ring
 // comes out of on large screens.
@@ -185,20 +168,20 @@ const EMPTY = {
   scores: Object.fromEntries(CATEGORIES.map((c) => [c.key, { score: null, available: false, note: "Loading..." }])),
 };
 
-function useHealthScore(userId, range) {
+function useHealthScore(userId, date) {
   const [state, setState] = useState({ status: "loading", data: EMPTY, error: null });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setState((s) => ({ ...s, status: "loading", error: null }));
-    getHealthScore(userId, range)
+    getHealthScore(userId, "day", date)
       .then((result) => !cancelled && setState({ status: "ready", data: toViewModel(result), error: null }))
       .catch((error) => !cancelled && setState({ status: "error", data: EMPTY, error }));
     return () => {
       cancelled = true;
     };
-  }, [userId, range, attempt]);
+  }, [userId, date, attempt]);
 
   return { ...state, retry: () => setAttempt((n) => n + 1) };
 }
@@ -218,7 +201,7 @@ function StatusBanner({ status, error, data, onRetry }) {
   if (data.overall == null) {
     return (
       <p className="px-frame mt-8 bg-night-800/85 px-5 py-4 text-lg">
-        No HealthScore yet. Log workouts, meals, sleep and activity to unlock it.
+        No HealthScore for this day. Log workouts, meals, sleep or activity to unlock it.
       </p>
     );
   }
@@ -233,30 +216,31 @@ function StatusBanner({ status, error, data, onRetry }) {
   return null;
 }
 
-function HealthScore({ userId, profile, onEditProfile, onLogout }) {
-  const [range, setRange] = useState("week");
-  const { status, data, error, retry } = useHealthScore(userId, range);
+function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
+  const today = localToday();
+  const [date, setDate] = useState(today);
+  const [gameRefresh, setGameRefresh] = useState(0);
+  const { status, data, error, retry } = useHealthScore(userId, date);
   const { overall, scores } = data;
   const byKey = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
+  function handleLogged() {
+    retry();
+    setGameRefresh((value) => value + 1);
+  }
 
   return (
     <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-8 sm:pt-10">
-      <header className="flex items-center justify-between gap-4">
-        <Logo />
-        <button type="button" onClick={onLogout} className="px-focus text-lg text-muted transition-colors hover:text-cyan">
-          Log out ⏻
-        </button>
-      </header>
+      <DashboardHeader activeTab="health" onTabChange={onNavigate} onLogout={onLogout} />
 
       <div className="mt-10 flex flex-wrap items-end justify-between gap-6">
         <motion.div {...rise(0.1)}>
           <h1 className="text-5xl font-bold sm:text-6xl">HealthScore</h1>
           <p className="mt-3 text-lg text-muted">
-            Your overall wellness at a glance{profile.name ? `, ${profile.name}` : ""}.
+            How your day went{profile.name ? `, ${profile.name}` : ""}.
           </p>
         </motion.div>
         <motion.div {...rise(0.2)}>
-          <RangeSelect value={range} onChange={setRange} />
+          <DateSwitcher value={date} today={today} onChange={setDate} />
         </motion.div>
       </div>
 
@@ -274,7 +258,7 @@ function HealthScore({ userId, profile, onEditProfile, onLogout }) {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: "spring", stiffness: 160, damping: 18, delay: 0.15 }}
         >
-          <ScoreRing key={`${range}-${status}`} scores={scores} categories={CATEGORIES}>
+          <ScoreRing key={`${date}-${status}`} scores={scores} categories={CATEGORIES}>
             <div className="flex flex-col items-center text-center">
               <PixelIcon icon={ICONS.trophy} size={48} className="h-auto w-8 drop-shadow-[0_0_12px_#f7b73380] sm:w-12" />
               <p className="mt-1 text-5xl font-bold leading-none sm:mt-2 sm:text-7xl">
@@ -301,7 +285,9 @@ function HealthScore({ userId, profile, onEditProfile, onLogout }) {
       </div>
 
       <SummaryBar scores={scores} />
-      <LogPanel userId={userId} onLogged={retry} />
+      <DayLog userId={userId} date={date} today={today} refreshKey={gameRefresh} />
+      <GamificationPanel userId={userId} refreshKey={gameRefresh} />
+      <LogPanel userId={userId} date={date} onLogged={handleLogged} />
       <PlayerProfile profile={profile} onEdit={onEditProfile} />
 
       {data.disclaimer && <p className="mt-10 text-center text-sm text-muted">{data.disclaimer}</p>}

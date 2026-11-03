@@ -13,6 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@fontsource/jersey-10": "^5.3.0",
     "@fontsource/vt323": "^5.3.0",
     "@supabase/server": "^1.9.1",
     "@supabase/supabase-js": "^2.117.3",

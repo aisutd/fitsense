@@ -95,6 +95,12 @@ def test_ranking_penalises_combined_dishes():
     assert rank_score("diet cola", "Soft drink, cola, diet", "Survey (FNDDS)") >         rank_score("diet cola", "Rum and diet cola", "Survey (FNDDS)")
 
 
+def test_ranking_prefers_no_added_fat():
+    # cooking fat is its own ingredient, so "pinto beans" shouldn't pick beans cooked in oil
+    assert rank_score("pinto beans", "Pinto beans, from canned, no added fat", "Survey (FNDDS)") >         rank_score("pinto beans", "Pinto beans, from canned, fat added", "Survey (FNDDS)")
+    assert rank_score("fried pinto beans with oil", "Pinto beans, from canned, fat added", "Survey (FNDDS)") >         rank_score("fried pinto beans with oil", "Pinto beans, from canned, no added fat", "Survey (FNDDS)")
+
+
 def test_fdc_client_retries_a_server_error_once():
     import httpx
     from app.food.fdc import FdcClient, FdcError

@@ -28,6 +28,37 @@ POINTS: dict[PointAction, int] = {
     PointAction.streak_7_days: 100,
 }
 
+# FitCoins are a separate spendable reward. A completed workout earns +10, as
+# shown in the game HUD; award_points() mirrors this map in 008_leagues_fitcoins.sql.
+FITCOINS: dict[PointAction, int] = {
+    PointAction.onboarding_completed: 10,
+    PointAction.workout_completed: 10,
+    PointAction.workout_partial: 5,
+    PointAction.meal_logged: 2,
+    PointAction.sleep_logged: 2,
+    PointAction.daily_goals_met: 5,
+    PointAction.streak_7_days: 20,
+}
+
+BADGE_REWARDS = {
+    "first_workout": {"threshold": 1, "fitcoins": 5},
+    "ten_workouts": {"threshold": 10, "fitcoins": 20},
+    "seven_day_streak": {"threshold": None, "fitcoins": 25},
+}
+
+LEAGUES = [
+    "Bronze", "Bronze Premium", "Silver", "Silver Premium", "Gold",
+    "Platinum", "Ruby", "Diamond", "Sapphire",
+]
+
+AVATARS = [
+    {"id": "starter", "name": "Trailblazer", "emoji": "🧑‍🚀", "cost": 0},
+    {"id": "fox", "name": "Quick Fox", "emoji": "🦊", "cost": 40},
+    {"id": "owl", "name": "Night Owl", "emoji": "🦉", "cost": 80},
+    {"id": "tiger", "name": "Iron Tiger", "emoji": "🐯", "cost": 140},
+    {"id": "dragon", "name": "Sky Dragon", "emoji": "🐉", "cost": 220},
+]
+
 # Minimum points for each level: index 0 = level 1. Must start at 0 and ascend.
 LEVEL_THRESHOLDS: list[int] = [0, 200, 500, 1000, 1750, 2750, 4000, 5500, 7500, 10000]
 MAX_LEVEL = len(LEVEL_THRESHOLDS)

@@ -10,15 +10,17 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, signal) {
   let res;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
-  } catch {
+  } catch (error) {
+    if (error.name === "AbortError") throw error; // a newer request replaced this one
     throw new ApiError(0, "Can't reach the FitSense server. Is the backend running?");
   }
   const data = await res.json().catch(() => null);
@@ -38,33 +40,50 @@ export const login = (username, password) => request("POST", "/auth/login", { us
 
 export const saveProfile = (userId, profile) => request("PUT", `/profiles/${userId}`, profile);
 export const getProfile = (userId) => request("GET", `/profiles/${userId}`);
-export const getHealthScore = (userId, range) =>
-  request("GET", `/healthscore/${userId}?range=${encodeURIComponent(range)}&end_date=${localToday()}`);
+// range "day" scores just endDate; "week"/"month" score the window ending on it.
+export const getHealthScore = (userId, range, endDate = localToday()) =>
+  request("GET", `/healthscore/${userId}?range=${encodeURIComponent(range)}&end_date=${endDate}`);
+// Everything logged on one day (sleep = the night before it).
+export const getDayLog = (userId, date) => request("GET", `/logs/${userId}/day/${date}`);
+export const getForecasts = (userId) => request("GET", `/forecasts/${userId}`);
+export const getGamification = (userId) => request("GET", `/gamification/${userId}`);
+export const getLeague = (userId) => request("GET", `/gamification/${userId}/league`);
+export const getAvatarInventory = (userId) => request("GET", `/gamification/${userId}/avatars`);
+export const purchaseAvatar = (userId, avatarId) => request("POST", `/gamification/${userId}/avatars/${avatarId}/purchase`);
+export const equipAvatar = (userId, avatarId) => request("PUT", `/gamification/${userId}/avatars/${avatarId}/equip`);
 
 // Logging: each one feeds a HealthScore category.
-export const logWorkout = (userId, workoutDate, completionStatus, durationMinutes) =>
+// plan: { planId, dayNumber } to log a specific workout-plan day; otherwise the backend links the
+// workout to that week's next open plan day.
+export const logWorkout = (userId, workoutDate, completionStatus, durationMinutes, plan) =>
   request("POST", `/logs/${userId}/workouts`, {
     workout_date: workoutDate,
     completion_status: completionStatus,
     duration_minutes: durationMinutes ?? null,
+    ...(plan ? { plan_id: plan.planId, day_number: plan.dayNumber } : {}),
   });
+export const getCurrentPlan = (userId) => request("GET", `/plans/${userId}/current?today=${localToday()}`);
 export const logSleep = (userId, date, hoursSlept) =>
   request("PUT", `/logs/${userId}/sleep/${date}`, { hours_slept: hoursSlept });
 export const logActivity = (userId, date, steps) => request("PUT", `/logs/${userId}/activity/${date}`, { steps });
 export const logMeal = (userId, meal) => request("POST", `/logs/${userId}/meals`, meal);
 export const getGoals = (userId) => request("GET", `/goals/${userId}`);
 
-// Food logging: describe a meal -> review the estimate -> confirm.
+// Food logging: describe a meal (or pick foods from search) -> review the estimate -> confirm.
 export const analyzeMeal = (userId, text, logDate, mealType) =>
   request("POST", `/meals/${userId}/analyze`, { text, log_date: logDate, meal_type: mealType || null });
 export const listMeals = (userId, logDate, status) =>
   request("GET", `/meals?user_id=${userId}&log_date=${logDate}${status ? `&status=${status}` : ""}`);
 export const updateMealItem = (mealId, itemId, changes) => request("PATCH", `/meals/${mealId}/items/${itemId}`, changes);
-export const addMealItem = (mealId, text) => request("POST", `/meals/${mealId}/items`, { text });
+// item: { text } typed ("2 tbsp butter") or { fdc_id, quantity?, unit? } picked from search
+export const addMealItem = (mealId, item) => request("POST", `/meals/${mealId}/items`, item);
+export const startMeal = (userId, logDate, mealType, items) =>
+  request("POST", `/meals/${userId}/start`, { log_date: logDate, meal_type: mealType || null, items });
 export const deleteMealItem = (mealId, itemId) => request("DELETE", `/meals/${mealId}/items/${itemId}`);
 export const confirmMeal = (mealId) => request("POST", `/meals/${mealId}/confirm`);
 export const discardMeal = (mealId) => request("POST", `/meals/${mealId}/discard`);
 export const searchFoods = (q) => request("GET", `/foods/search?q=${encodeURIComponent(q)}`);
+export const suggestFoods = (q, signal) => request("GET", `/foods/suggest?q=${encodeURIComponent(q)}`, undefined, signal);
 
 // First readable validation message from a 422, for forms.
 export function validationMessage(error, fallback = "Something went wrong. Please try again.") {

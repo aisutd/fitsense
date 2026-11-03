@@ -36,7 +36,7 @@ def trim_search(d: dict) -> dict:
 
 FOODS = ["egg", "olive oil", "cheddar cheese", "banana", "white bread", "peanut butter", "pizza", "bacon",
          "protein powder", "coffee", "milk", "white rice", "chicken breast", "broccoli", "oatmeal", "cola",
-         "tofu", "mixed vegetables", "vegetable oil", "soy sauce", "fried rice", "latte", "jam", "almonds", "apple", "butter"]
+         "tofu", "mixed vegetables", "vegetable oil", "soy sauce", "fried rice", "latte", "jam", "almonds", "apple", "butter", "beans"]
 SEARCHES = ["kimchi fried rice", "pho", "shakshuka", "xyzzy", "banana"]
 
 

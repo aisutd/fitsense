@@ -74,6 +74,8 @@ Training takes about 20 minutes on a laptop CPU (v3: 22 minutes). `corpus/` and 
 
 1. Add a line to `app/food/data/foods.json` (`name`, `aliases`, `query`, `category`).
 2. Run `resolve_lexicon.py`, check the printed FDC match, and fix the `query` (or set `fdc_id` and `"pinned": true`) if
-   it picked the wrong food.
+   it picked the wrong food. For cooked foods pick the **"no added fat"** version: USDA's "NFS" entries for beans,
+   lentils, egg whites etc. include cooking fat (a cup of "Beans, NFS" is 350 kcal vs 245 plain), and oil or butter is
+   logged as its own ingredient.
 3. Optionally add a recipe to `recipes.json` for dishes people would want to adjust ingredient by ingredient.
 4. Retrain so the model sees the new names (the food-list matcher picks them up immediately either way).

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PixelIcon from "./PixelIcon";
 import { ICONS } from "../icons";
 import MealLogger from "./MealLogger";
+import { shiftDay } from "./DateSwitcher";
 import { localToday, logActivity, logMeal, logSleep, logWorkout, validationMessage } from "../api";
 
 // Quick logging on the HealthScore page. Each tab feeds one category; after a
@@ -36,10 +37,13 @@ function Field({ label, suffix, ...props }) {
 
 const num = (v) => (v === "" ? NaN : Number(v));
 
-function LogPanel({ userId, onLogged }) {
+// Logs go to the day the HealthScore is showing (viewedDate); sleep defaults to the night before it.
+function LogPanel({ userId, date: viewedDate, onLogged }) {
   const today = localToday();
+  const day = viewedDate ?? today;
   const [tab, setTab] = useState("workout");
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(day);
+  useEffect(() => setDate(tab === "sleep" ? shiftDay(day, -1) : day), [day, tab]);
   const [status, setStatus] = useState("completed");
   const [duration, setDuration] = useState("");
   const [hours, setHours] = useState("");
@@ -65,14 +69,15 @@ function LogPanel({ userId, onLogged }) {
     setBusy(true);
     setMessage(null);
     try {
+      let result;
       if (tab === "workout") {
-        await logWorkout(userId, date, status, duration === "" ? null : num(duration));
+        result = await logWorkout(userId, date, status, duration === "" ? null : num(duration));
       } else if (tab === "sleep") {
-        await logSleep(userId, date, num(hours));
+        result = await logSleep(userId, date, num(hours));
       } else if (tab === "steps") {
-        await logActivity(userId, date, num(steps));
+        result = await logActivity(userId, date, num(steps));
       } else {
-        await logMeal(userId, {
+        result = await logMeal(userId, {
           log_date: date,
           meal_type: meal.meal_type,
           display_name: meal.display_name.trim() || null,
@@ -82,7 +87,11 @@ function LogPanel({ userId, onLogged }) {
           fat_g: num(meal.fat_g),
         });
       }
-      setMessage({ ok: true, text: `${active.label} logged. HealthScore updated.` });
+      const reward = result?.rewards;
+      const xp = reward?.points_awarded ? ` +${reward.points_awarded} XP` : "";
+      const earned = reward?.fitcoins_awarded ? ` +${reward.fitcoins_awarded} FitCoins` : "";
+      const badges = reward?.badges_earned?.length ? ` Badge unlocked: ${reward.badges_earned.map((badge) => badge.id.replaceAll("_", " ")).join(", ")}.` : "";
+      setMessage({ ok: true, text: `${active.label} logged. HealthScore updated.${xp}${earned ? `${earned}!` : ""}${badges}` });
       onLogged();
     } catch (error) {
       setMessage({ ok: false, text: validationMessage(error, "Couldn't save that. Please try again.") });
@@ -124,7 +133,7 @@ function LogPanel({ userId, onLogged }) {
       </div>
 
       {tab === "meal" && !manualMeal ? (
-        <MealLogger userId={userId} onLogged={onLogged} onManual={() => setManualMeal(true)} />
+        <MealLogger key={day} userId={userId} date={day} onLogged={onLogged} onManual={() => setManualMeal(true)} />
       ) : (
       <form onSubmit={submit} className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <Field label={tab === "sleep" ? "Night of" : "Date"} type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} required />

@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from itertools import count
 from pathlib import Path
@@ -21,6 +22,9 @@ UPSERT_KEYS = {
     "activity_logs": ("user_id", "log_date"),
     "fdc_foods": ("fdc_id",),
     "fdc_search_cache": ("query",),
+    "league_seasons": ("season_start",),
+    "league_season_scores": ("season_start", "user_id"),
+    "user_avatars": ("user_id", "avatar_id"),
 }
 GENERATED_IDS = {
     "workout_logs": "workout_log_id",
@@ -35,9 +39,10 @@ GENERATED_IDS = {
     "accounts": "user_id",
     "meal_items": "meal_item_id",
     "fdc_food_portions": "portion_id",
+    "user_gamification": "user_id",
 }
 UNIQUE_COLUMNS = {"accounts": "username"}
-TIMESTAMP_COLUMNS = {"health_scores": "calculated_at"}
+TIMESTAMP_COLUMNS = {"health_scores": "calculated_at", "workout_logs": None}   # None: the table has no timestamp
 
 _clock = count()
 _epoch = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -60,6 +65,7 @@ class FakeQuery:
         self.on_conflict = None
         self.filters = []
         self.order_by = None
+        self.offset = 0
         self.max_rows = None
 
     # writes
@@ -97,6 +103,10 @@ class FakeQuery:
         self.filters.append((column, lambda a, b: a <= b, value))
         return self
 
+    def in_(self, column, values):
+        self.filters.append((column, lambda a, b: a in b, [str(v) for v in values]))
+        return self
+
     def order(self, column, desc=False):
         self.order_by = (column, desc)
         return self
@@ -105,11 +115,22 @@ class FakeQuery:
         self.max_rows = n
         return self
 
+    def range(self, first, last):
+        self.offset, self.max_rows = first, last - first + 1
+        return self
+
     def _check_fk(self, row):
         if self.name != "profiles" and "user_id" in row and row["user_id"] not in self.db.tables.get("profiles", {}):
             raise APIError({"code": "23503", "message": "violates foreign key constraint"})
 
     def execute(self):
+        if self.op == "upsert" and isinstance(self.payload, list):
+            rows = []
+            for payload in self.payload:
+                q = FakeQuery(self.db, self.name)
+                q.op, q.payload, q.on_conflict = "upsert", payload, self.on_conflict
+                rows += q.execute().data
+            return SimpleNamespace(data=rows)
         if self.op == "upsert":
             self._check_fk(self.payload)
             key = tuple(self.payload[c] for c in self.on_conflict)
@@ -130,13 +151,15 @@ class FakeQuery:
                 if unique and any(r[unique] == payload[unique] for r in self.rows.values()):
                     raise APIError({"code": "23505", "message": "duplicate key value violates unique constraint"})
                 id_col = GENERATED_IDS[self.name]
-                row = {id_col: str(uuid4()), TIMESTAMP_COLUMNS.get(self.name, "created_at"): _now(), **payload}
+                stamp = TIMESTAMP_COLUMNS.get(self.name, "created_at")
+                row = {id_col: str(uuid4()), **({stamp: _now()} if stamp else {}), **payload}
                 self.rows[row[id_col]] = row
                 inserted.append(row)
             return SimpleNamespace(data=inserted)
 
         def matches(r):
-            return all(c in r and r[c] is not None and op(str(r[c]), str(v)) for c, op, v in self.filters)
+            return all(c in r and r[c] is not None and op(str(r[c]), v if isinstance(v, list) else str(v))
+                       for c, op, v in self.filters)
 
         result = [r for r in self.rows.values() if matches(r)]
         if self.op == "delete":
@@ -151,7 +174,7 @@ class FakeQuery:
             column, desc = self.order_by
             result.sort(key=lambda r: r[column], reverse=desc)
         if self.max_rows is not None:
-            result = result[: self.max_rows]
+            result = result[self.offset: self.offset + self.max_rows]
         return SimpleNamespace(data=result)
 
 
@@ -189,6 +212,25 @@ class FakeRpc:
         }])
 
 
+class FakeSearchRpc:
+    """In-memory search_fdc_foods(): every word must start a word of the description (no typo matching)."""
+
+    def __init__(self, db: "FakeSupabase", params: dict):
+        self.db = db
+        self.params = params
+
+    def execute(self):
+        words = [w.lower() for w in self.params["words"] if w]
+        out = []
+        for r in self.db.tables.get("fdc_foods", {}).values():
+            desc_words = re.findall(r"[a-z0-9]+", r["description"].lower())
+            if r.get("calories_per_100g") is not None and words and all(
+                    any(d.startswith(w) for d in desc_words) for w in words):
+                out.append({k: r.get(k) for k in ("fdc_id", "description", "data_type", "calories_per_100g")})
+        out.sort(key=lambda r: len(r["description"]))
+        return SimpleNamespace(data=out[: self.params.get("max_results", 150)])
+
+
 class FakeSupabase:
     def __init__(self):
         self.tables: dict[str, dict] = {}
@@ -197,6 +239,10 @@ class FakeSupabase:
         return FakeQuery(self, name)
 
     def rpc(self, name, params):
+        if name == "search_fdc_foods":
+            return FakeSearchRpc(self, params)
+        if name == "finalize_league_season":
+            return SimpleNamespace(execute=lambda: SimpleNamespace(data=False))
         assert name == "award_points"
         return FakeRpc(self, params)
 
@@ -255,3 +301,12 @@ def fake_fdc():
     fdc = FakeFdc()
     app.dependency_overrides[get_fdc] = lambda: fdc
     yield fdc
+
+
+@pytest.fixture
+def usda_copy(fake_db):
+    """The local USDA copy, imported (with the real importer) from the recorded FDC foods."""
+    from app.food.fdc_import import import_foods
+    raws = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(FDC_FIXTURES.glob("food_*.json"))]
+    import_foods(fake_db, raws, log=lambda *_: None)
+    return fake_db

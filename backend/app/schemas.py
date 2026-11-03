@@ -93,6 +93,8 @@ class PointsStatus(BaseModel):
     next_level_points: int | None
     points_to_next_level: int | None
     progress_percent: float
+    fitcoins: int = 0
+    equipped_avatar: str = "starter"
 
 
 class AwardPointsOut(PointsStatus):
@@ -101,6 +103,8 @@ class AwardPointsOut(PointsStatus):
     awarded: bool = Field(description="False when this source was already rewarded for this action")
     previous_level: int
     leveled_up: bool
+    fitcoins_awarded: int = 0
+    badges_earned: list[dict] = Field(default_factory=list)
 
 
 class PointEvent(BaseModel):
@@ -126,6 +130,7 @@ class LevelInfo(BaseModel):
 # --- HealthScore ---------------------------------------------------------------
 
 class HealthScoreRange(str, Enum):
+    day = "day"              # just end_date (sleep: the night before it)
     week = "week"            # last 7 days, including end_date
     last_week = "last-week"  # the 7 days before that
     month = "month"          # last 30 days, including end_date
@@ -196,6 +201,7 @@ class WorkoutLogIn(BaseModel):
     completion_status: CompletionStatus = CompletionStatus.completed
     duration_minutes: int | None = Field(default=None, ge=0, le=600)
     plan_id: UUID | None = None
+    day_number: int | None = Field(default=None, ge=1, le=7, description="Which day of the plan this workout was")
 
 
 class SleepLogIn(BaseModel):
@@ -321,11 +327,28 @@ class MealItemUpdateIn(BaseModel):
 
 
 class MealItemAddIn(BaseModel):
+    """Either typed text ("2 tbsp sour cream") or a food picked from search (fdc_id)."""
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    text: str = Field(min_length=2, max_length=100)
+    text: str | None = Field(default=None, min_length=2, max_length=200)
+    fdc_id: int | None = Field(default=None, gt=0, description="A food picked from /foods/suggest or /foods/search")
     quantity: float | None = Field(default=None, gt=0, le=5000)
     unit: UnitName | None = None
+
+    @model_validator(mode="after")
+    def _text_or_food(self):
+        if self.text is None and self.fdc_id is None:
+            raise ValueError("Give the ingredient text or pick a food (fdc_id)")
+        return self
+
+
+class MealStartIn(BaseModel):
+    """A meal started from foods picked in the search box."""
+    model_config = ConfigDict(extra="forbid")
+
+    log_date: date
+    meal_type: MealType | None = None
+    items: list[MealItemAddIn] = Field(min_length=1, max_length=30)
 
 
 class FoodRef(BaseModel):
@@ -338,6 +361,12 @@ class FoodSearchHit(BaseModel):
     description: str
     data_type: str
     calories_per_100g: float | None
+
+
+class FoodSuggestion(FoodSearchHit):
+    name: str                                   # "Greek yogurt" for listed foods, the USDA description otherwise
+    data_type: str | None
+    source: Literal["list", "usda"]
 
 
 class MealItemOut(BaseModel):

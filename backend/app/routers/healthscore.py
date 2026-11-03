@@ -25,11 +25,11 @@ def _calculate(supabase: Client, user_id: UUID, range_key: HealthScoreRange, end
 @router.get("/{user_id}", response_model=HealthScoreOut)
 def get_healthscore(
     user_id: UUID,
-    range: HealthScoreRange = HealthScoreRange.week,
-    end_date: date | None = Query(default=None, description="Last day of the window (the user's local today). Defaults to the server's today."),
+    range: HealthScoreRange = HealthScoreRange.day,
+    end_date: date | None = Query(default=None, description="The day to score, or the last day of the window (the user's local date). Defaults to the server's today."),
     supabase: Client = Depends(get_supabase),
 ):
-    """Calculate the HealthScore for a window without saving it."""
+    """Calculate the HealthScore for a day (default) or a window, without saving it."""
     result, _ = _calculate(supabase, user_id, range, end_date)
     return result
 
