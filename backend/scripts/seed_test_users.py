@@ -9,7 +9,9 @@ Usage:
     python backend/scripts/seed_test_users.py --count 20   # tester001 ... tester020
 
 Profiles and habits are generated from the username, so every run produces the same players.
-Re-running skips accounts that already exist (their data is left alone) and checks every login.
+Re-running skips accounts that already exist, fills in logs for the last --refresh-days days
+(default 7; only days/categories that are still empty), and checks every login. Re-run it
+every few days to keep the test players' recent data fresh.
 """
 
 import argparse
@@ -67,6 +69,18 @@ PERSONAS = [
 ]
 
 
+# Per persona: (chance a workout day is done, sleep hours range, steps range, calorie error,
+# chance a day is logged at all)
+HABITS = {
+    "on track":       (0.95, (7.3, 8.8), (8000, 13000), 0.08, 0.95),
+    "mixed":          (0.6, (6.3, 8.2), (5000, 10000), 0.2, 0.7),
+    "struggling":     (0.3, (4.8, 6.6), (2000, 6000), 0.35, 0.6),
+    "partial logger": (0.7, (6.0, 8.5), (4000, 11000), 0.15, 0.8),
+    "lapsed":         (0.7, (6.5, 8.5), (5000, 11000), 0.15, 0.8),
+}
+CATEGORIES = ("activity", "nutrition", "sleep", "workouts")
+
+
 def username(n: int) -> str:
     return f"tester{n:03d}"
 
@@ -99,15 +113,7 @@ def plan_logs(rng: random.Random, persona: str, profile: dict) -> list[tuple[str
     """(method, path suffix, body) for the last 14 days of logs."""
     target = targets(profile)
     days_this_week, days_last_week = range(0, 7), range(7, 14)
-    # (chance a workout day is done, sleep hours range, steps range, calorie error, chance a day is logged)
-    habits = {
-        "on track":   (0.95, (7.3, 8.8), (8000, 13000), 0.08, 0.95),
-        "mixed":      (0.6, (6.3, 8.2), (5000, 10000), 0.2, 0.7),
-        "struggling": (0.3, (4.8, 6.6), (2000, 6000), 0.35, 0.6),
-        "partial logger": (0.7, (6.0, 8.5), (4000, 11000), 0.15, 0.8),
-        "lapsed":     (0.7, (6.5, 8.5), (5000, 11000), 0.15, 0.8),
-    }[persona]
-    workout_rate, sleep_range, steps_range, cal_error, log_rate = habits
+    workout_rate, sleep_range, steps_range, cal_error, log_rate = HABITS[persona]
     days = days_last_week if persona == "lapsed" else range(0, 14)
     categories = {"workouts", "sleep", "activity", "nutrition"}
     if persona == "partial logger":
@@ -137,12 +143,7 @@ def plan_logs(rng: random.Random, persona: str, profile: dict) -> list[tuple[str
         if "activity" in categories:
             logs.append(("PUT", f"activity/{iso(d)}", {"steps": rng.randrange(*steps_range, 50)}))
         if "nutrition" in categories:
-            f = 1 + rng.uniform(-cal_error, cal_error)
-            logs.append(("POST", "meals", {"log_date": iso(d), "meal_type": "dinner", "display_name": "Day's meals",
-                                           "calories": round(target["calories"] * f),
-                                           "protein_g": round(target["protein_g"] * rng.uniform(0.6, 1.1), 1),
-                                           "carbs_g": round(target["carbs_g"] * f, 1),
-                                           "fat_g": round(target["fat_g"] * f, 1)}))
+            logs.append(("POST", "meals", meal_body(iso(d), target, rng, cal_error)))
     return logs
 
 
@@ -150,12 +151,77 @@ def iso(days_ago: int) -> str:
     return (TODAY - timedelta(days=days_ago)).isoformat()
 
 
+def identity(name: str) -> tuple[random.Random, str, dict]:
+    """The player's generator, persona and profile - the same on every run."""
+    rng = random.Random(f"fitsense-{name}")
+    persona = rng.choices([p for p, _ in PERSONAS], weights=[w for _, w in PERSONAS])[0]
+    return rng, persona, make_profile(rng)
+
+
+def meal_body(day: str, target: dict, rng: random.Random, cal_error: float) -> dict:
+    f = 1 + rng.uniform(-cal_error, cal_error)
+    return {"log_date": day, "meal_type": "dinner", "display_name": "Day's meals",
+            "calories": round(target["calories"] * f), "protein_g": round(target["protein_g"] * rng.uniform(0.6, 1.1), 1),
+            "carbs_g": round(target["carbs_g"] * f, 1), "fat_g": round(target["fat_g"] * f, 1)}
+
+
+def refresh_one(n: int, days: int) -> tuple[str, str]:
+    """Fill in today and the days before it with logs in the player's habits (randomised per day).
+
+    Only categories that are still empty for a day are logged, so re-running is safe and anything
+    a teammate logged by hand stays. Lapsed and brand-new players stay that way."""
+    name = username(n)
+    _, persona, profile = identity(name)
+    if persona in ("new player", "lapsed"):
+        return name, "unchanged"
+    status, account = request("POST", "/auth/login", {"username": name, "password": SAMPLE_PASSWORD})
+    if status != 200:
+        return name, f"login failed: {status}"
+    uid = account["user_id"]
+    workout_rate, sleep_range, steps_range, cal_error, log_rate = HABITS[persona]
+    plan = random.Random(f"fitsense-{name}-plan")
+    workout_weekdays = set(plan.sample(range(7), profile["workout_frequency"]))
+    categories = set(CATEGORIES)
+    if persona == "partial logger":
+        categories = set(plan.sample(CATEGORIES, plan.randint(1, 2)))
+    target = targets(profile)
+
+    added = 0
+    for back in range(days):
+        day = TODAY - timedelta(days=back)
+        rng = random.Random(f"fitsense-{name}-{day}")
+        if rng.random() > log_rate:
+            continue
+        status, have = request("GET", f"/logs/{uid}/day/{day}")
+        if status != 200:
+            return name, f"reading {day} failed: {status}"
+        writes = []
+        if "sleep" in categories and not have["sleep"]:      # the night before this day
+            night = (day - timedelta(days=1)).isoformat()
+            writes.append(("PUT", f"/logs/{uid}/sleep/{night}", {"hours_slept": round(rng.uniform(*sleep_range) * 4) / 4,
+                                                                 "sleep_quality": rng.randint(2, 5)}))
+        if "activity" in categories and not have["activity"]:
+            writes.append(("PUT", f"/logs/{uid}/activity/{day}", {"steps": rng.randrange(*steps_range, 50)}))
+        if "nutrition" in categories and not have["meals"]:
+            writes.append(("POST", f"/logs/{uid}/meals", meal_body(day.isoformat(), target, rng, cal_error)))
+        if "workouts" in categories and day.weekday() in workout_weekdays and not have["workouts"]:
+            done = rng.random() < workout_rate
+            writes.append(("POST", f"/logs/{uid}/workouts", {
+                "workout_date": day.isoformat(),
+                "completion_status": "completed" if done else rng.choice(["partial", "skipped"]),
+                "duration_minutes": rng.choice([20, 30, 45, 45, 60, 75]) if done else None}))
+        for method, url, body in writes:
+            status, result = request(method, url, body)
+            if status not in (200, 201):
+                return name, f"{method} {url} failed: {status} {result}"
+            added += 1
+    return name, f"refreshed ({added} logs)"
+
+
 def seed_one(n: int) -> tuple[str, str]:
     """Returns (username, outcome)."""
     name = username(n)
-    rng = random.Random(f"fitsense-{name}")
-    persona = rng.choices([p for p, _ in PERSONAS], weights=[w for _, w in PERSONAS])[0]
-    profile = make_profile(rng)
+    rng, persona, profile = identity(name)
 
     status, account = request("POST", "/auth/signup", {"username": name, "password": SAMPLE_PASSWORD})
     if status == 409:
@@ -183,13 +249,15 @@ def check_login(n: int) -> tuple[str, bool, int | None]:
     status, account = request("POST", "/auth/login", {"username": name, "password": SAMPLE_PASSWORD})
     if status != 200 or not account.get("has_profile"):
         return name, False, None
-    _, score = request("GET", f"/healthscore/{account['user_id']}?range=week&end_date={TODAY}")
+    _, score = request("GET", f"/healthscore/{account['user_id']}?range=day&end_date={TODAY}")
     return name, True, (score or {}).get("overall_score")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Create test players tester001 ... testerNNN")
     ap.add_argument("--count", type=int, default=200)
+    ap.add_argument("--refresh-days", type=int, default=7,
+                    help="fill in logs for today and the days before it, up to this many days (0 to skip)")
     args = ap.parse_args()
     numbers = range(1, args.count + 1)
     if request("GET", "/health", attempts=1)[0] != 200:
@@ -209,13 +277,25 @@ def main() -> int:
     for u, r in failed[:10]:
         print(f"  [FAIL] {u}: {r}")
 
+    if args.refresh_days > 0:
+        print(f"Filling in the last {args.refresh_days} days ...")
+        with ThreadPoolExecutor(WORKERS) as pool:
+            refreshed = list(pool.map(lambda n: refresh_one(n, args.refresh_days), numbers))
+        bad_refresh = [(u, r) for u, r in refreshed if not (r == "unchanged" or r.startswith("refreshed"))]
+        added = sum(int(r.split("(")[1].split()[0]) for _, r in refreshed if r.startswith("refreshed"))
+        print(f"  added {added} logs for {sum(r.startswith('refreshed') for _, r in refreshed)} players, "
+              f"failed {len(bad_refresh)}")
+        for u, r in bad_refresh[:10]:
+            print(f"  [FAIL] {u}: {r}")
+        failed += bad_refresh
+
     print("Checking every login ...")
     with ThreadPoolExecutor(WORKERS) as pool:
         logins = list(pool.map(check_login, numbers))
     bad = [u for u, ok, _ in logins if not ok]
     scores = [s for _, ok, s in logins if ok and s is not None]
     print(f"  {len(logins) - len(bad)} of {len(logins)} log in and have a profile; "
-          f"{len(scores)} have a HealthScore this week (range {min(scores, default='-')}-{max(scores, default='-')})")
+          f"{len(scores)} have a HealthScore today (range {min(scores, default='-')}-{max(scores, default='-')})")
     if bad:
         print("  [FAIL] can't log in: " + ", ".join(bad[:20]))
     print(f"\nLog in as {username(1)} ... {username(args.count)} with the password in SAMPLE_PASSWORD (seed_sample_users.py).")

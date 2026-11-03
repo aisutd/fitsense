@@ -12,9 +12,18 @@ regression on the user's own history. Two things make it adapt to the user:
 The weight forecast uses the workout forecast: the goal's expected weight change is scaled by
 how much of their planned workouts the user is forecast to complete next week.
 
+Three things keep the forecasts realistic:
+
+- Damped trend (Holt): each week ahead keeps DAMPING of the previous week's trend, so a trend
+  fitted on a few weeks levels off instead of running away over 12 weeks.
+- Only full weeks count: the week a user joined (unless they joined on a Monday) and weeks with
+  fewer than MIN_DAYS_PER_WEEK step logs are left out, so a partial week doesn't fake a trend.
+- Each prediction has an 80% range from the user's own week-to-week variation (at least
+  MIN_NOISE), widening with the horizon. Workouts never go above max(plan, best week so far).
+
 The HealthScore forecast uses the backend's own calculation (backend/app/healthscore.py and
-healthscore_repo.py, the code behind the HealthScore screen). Each past week is scored as the
-screen's "Last 7 Days" view would have shown it, each category's weekly score is forecast
+healthscore_repo.py, the code behind the HealthScore screen). Each past week is scored as a
+7-day window, each category's weekly score is forecast
 separately, and the forecasts are combined with the active health_score_config weights, the
 same way the screen's overall score is.
 
@@ -53,8 +62,21 @@ WEIGHT_LOSS_PER_WEEK = 0.5
 MUSCLE_GAIN_PER_MONTH = {"beginner": 0.01, "intermediate": 0.005, "advanced": 0.0025}
 WEEKS_PER_MONTH = 52 / 12
 MAX_WEEKLY_WEIGHT_CHANGE = 1.0  # kg; the top of the CDC's safe range
-# Weeks of HealthScore history to rebuild. Each week is one backend calculation (about a second).
+# Weeks of HealthScore history to rebuild (scored in memory from one load of the user's logs).
 MAX_HEALTH_WEEKS = 12
+# Holt's damped trend: week h ahead adds slope * (1 + DAMPING + ... + DAMPING^(h-1)): next week
+# follows the full trend, later weeks less, so the total change is at most slope / (1 - DAMPING),
+# 5 weeks' worth of the current trend.
+DAMPING = 0.8
+# 80% prediction range: the 10th to 90th percentile of a normal distribution.
+INTERVAL_Z = 1.28
+# Typical week-to-week noise per metric. The user's own noise is blended with it as if it were
+# NOISE_PRIOR_WEEKS weeks of data, so a couple of weeks can't make the range absurdly wide or narrow.
+MIN_NOISE = {"weight_kg": 0.4, "workouts_per_week": 0.7, "daily_steps": 900.0, "health_score": 6.0}
+MIN_CATEGORY_NOISE = 8.0
+NOISE_PRIOR_WEEKS = 4
+# A week of steps needs at least this many logged days to count.
+MIN_DAYS_PER_WEEK = 3
 
 METRICS = {
     # prediction_type: (label, unit, lowest, highest)
@@ -84,21 +106,28 @@ def week_index(day, origin):
     return (week_start(day) - origin).days // 7
 
 
-def weekly_means(rows, date_key, value_key, origin):
-    """[(week index, mean value)] over completed weeks, skipping rows without a value."""
+def weekly_means(rows, date_key, value_key, origin, min_count=1, first_week=None):
+    """[(week index, mean value)] over completed weeks, skipping rows without a value, weeks
+    with fewer than min_count values, and weeks before first_week."""
     weeks = {}
     for row in rows:
         if row.get(value_key) is None or not row.get(date_key):
             continue
         t = week_index(to_date(row[date_key]), origin)
-        if t <= 0:
+        if t <= 0 and (first_week is None or t >= first_week):
             weeks.setdefault(t, []).append(float(row[value_key]))
-    return [(t, sum(values) / len(values)) for t, values in sorted(weeks.items())]
+    return [(t, sum(values) / len(values)) for t, values in sorted(weeks.items()) if len(values) >= min_count]
+
+
+def first_full_week(first_day, origin):
+    """Index of the first week the user was around for all of: the week of first_day if that
+    was a Monday, otherwise the next one."""
+    return week_index(first_day, origin) + (0 if first_day.weekday() == 0 else 1)
 
 
 def weekly_workouts(logs, first_day, origin):
-    """[(week index, completed workouts)] for every completed week since first_day, zeros included."""
-    first = week_index(first_day, origin)
+    """[(week index, completed workouts)] for every full, completed week since first_day, zeros included."""
+    first = first_full_week(first_day, origin)
     counts = {t: 0 for t in range(first, 1)}
     for log in logs:
         if log["completion_status"] == "completed" and log.get("workout_date"):
@@ -124,27 +153,62 @@ def fit_trend(points, prior_slope):
     return float(level), float(slope)
 
 
+def noise(points, level, slope, typical):
+    """Week-to-week spread around the fitted line, blended with the metric's typical spread.
+
+    The user's recency-weighted residual variance counts as (weeks - 2) weeks of evidence and the
+    typical spread as NOISE_PRIOR_WEEKS; never below the typical spread."""
+    if len(points) < 3:
+        return typical
+    t = np.array([p[0] for p in points], dtype=float)
+    y = np.array([p[1] for p in points], dtype=float)
+    w = 0.5 ** (-t / WEEK_HALF_LIFE)
+    variance = np.sum(w * (y - (level + slope * t)) ** 2) / np.sum(w)
+    n = len(points) - 2
+    blended = (NOISE_PRIOR_WEEKS * typical ** 2 + n * variance) / (NOISE_PRIOR_WEEKS + n)
+    return float(max(typical, np.sqrt(blended)))
+
+
+def damped(h):
+    """How many weeks of the current trend are added h weeks ahead."""
+    return sum(DAMPING ** i for i in range(h))
+
+
+def range_half_width(spread, h):
+    """Half of the 80% range h weeks ahead: one week's spread next week, growing with the damped
+    trend's uncertainty (at most sqrt(5) times as wide), not without limit."""
+    return INTERVAL_Z * spread * np.sqrt(damped(h))
+
+
 # prediction_type for each HealthScore category's forecast, e.g. health_score_sleep.
 CATEGORY_TYPES = {category: f"health_score_{category}" for category in hs.CATEGORIES}
 
 
-def clip(metric, value):
-    _, _, lowest, highest = METRICS.get(metric, ("", "", 0.0, 100.0))  # categories are 0-100
+def clip(metric, value, highest=None):
+    _, _, lowest, top = METRICS.get(metric, ("", "", 0.0, 100.0))  # categories are 0-100
+    highest = highest if highest is not None else top
     value = max(value, lowest)
     return min(value, highest) if highest is not None else value
 
 
-def forecast(metric, level, slope, points, origin):
-    """The fitted trend, the weekly history it came from, and its predictions.
+def forecast(metric, level, slope, points, origin, highest=None):
+    """The fitted trend, the weekly history it came from, and its predictions with 80% ranges.
 
     history is [(Monday of the week, value)]; each prediction's target_date is the Sunday
-    ending that week.
+    ending that week. The trend is damped (see DAMPING); ranges is [(target, low, high)].
     """
+    spread = noise(points, level, slope, MIN_NOISE.get(metric, MIN_CATEGORY_NOISE))
+    predictions, ranges = [], []
+    for h in HORIZONS:
+        target = origin + timedelta(days=7 * h + 6)
+        value = clip(metric, level + slope * damped(h), highest)
+        half = range_half_width(spread, h)
+        predictions.append((target, value))
+        ranges.append((target, clip(metric, value - half, highest), clip(metric, value + half, highest)))
     return {
-        "metric": metric, "level": clip(metric, level), "slope": slope, "weeks_of_data": len(points),
+        "metric": metric, "level": clip(metric, level, highest), "slope": slope, "weeks_of_data": len(points),
         "history": [(origin + timedelta(days=7 * t), value) for t, value in points],
-        "predictions": [(origin + timedelta(days=7 * h + 6), clip(metric, level + slope * h))
-                        for h in HORIZONS],
+        "predictions": predictions, "ranges": ranges, "noise": spread,
     }
 
 
@@ -177,9 +241,14 @@ def forecast_health(weeks, weights, origin):
         for i, (target, _) in enumerate(next(iter(categories.values()))["predictions"])
     ]
     history = [(monday, r["overall_score"]) for monday, r in weeks if r["overall_score"] is not None]
+    points = [(week_index(monday, origin), value) for monday, value in history]
+    spread = noise(points, *fit_trend(points, 0.0), MIN_NOISE["health_score"]) if points else MIN_NOISE["health_score"]
+    ranges = [(target, clip("health_score", value - range_half_width(spread, h)),
+               clip("health_score", value + range_half_width(spread, h)))
+              for h, (target, value) in zip(HORIZONS, predictions)]
     return {
         "metric": "health_score", "level": level, "slope": (predictions[-1][1] - level) / HORIZONS[-1],
-        "weeks_of_data": len(history), "history": history, "predictions": predictions,
+        "weeks_of_data": len(history), "history": history, "predictions": predictions, "ranges": ranges,
         "categories": categories, "weights": weights,
         "missing": [c for c in hs.CATEGORIES if c not in categories],
     }
@@ -208,7 +277,9 @@ def forecast_user(profile, history, today, workout_days=None, health=None, weigh
         level, slope = fit_trend(points, 0.0)
     else:
         level, slope = float(workout_days), 0.0
-    result["workouts_per_week"] = forecast("workouts_per_week", level, slope, points, origin)
+    # Nobody is forecast to do more than their plan or their best week so far.
+    most = min(7.0, max([float(workout_days)] + [value for _, value in points]))
+    result["workouts_per_week"] = forecast("workouts_per_week", level, slope, points, origin, highest=most)
 
     # Weight: body_measurements, or the onboarding weight until the user logs one. The goal's
     # expected rate is scaled by forecast adherence to the planned workouts.
@@ -224,7 +295,10 @@ def forecast_user(profile, history, today, workout_days=None, health=None, weigh
         result["weight_kg"] = forecast("weight_kg", level, slope, points, origin)
         result["weight_kg"]["adherence"] = adherence
 
-    points = weekly_means(history["activity_logs"], "log_date", "steps", origin)
+    first_activity = min([to_date(profile["created_at"])]
+                         + [to_date(r["log_date"]) for r in history["activity_logs"] if r.get("log_date")])
+    points = weekly_means(history["activity_logs"], "log_date", "steps", origin,
+                          min_count=MIN_DAYS_PER_WEEK, first_week=first_full_week(first_activity, origin))
     if points:
         result["daily_steps"] = forecast("daily_steps", *fit_trend(points, 0.0), points, origin)
 
@@ -248,15 +322,28 @@ def default_weight_model():
     return weight_forecast_model.load_model()
 
 
-def forecast_rows(user_id, forecasts):
-    """progress_forecasts rows for one user: one per metric and horizon."""
+def forecast_rows(user_id, forecasts, with_ranges=False):
+    """progress_forecasts rows for one user: one per metric and horizon. with_ranges adds the
+    80% range (low/high) for the API; the table only stores the prediction."""
     results = list(forecasts.values()) + list(forecasts.get("health_score", {}).get("categories", {}).values())
-    return [
-        {"user_id": user_id, "prediction_type": result["metric"], "predicted_value": round(value, 2),
-         "target_date": target.isoformat(), "model_version": result.get("model_version", MODEL_VERSION)}
-        for result in results
-        for target, value in result["predictions"]
-    ]
+    rows = []
+    for result in results:
+        for i, (target, value) in enumerate(result["predictions"]):
+            row = {"user_id": user_id, "prediction_type": result["metric"], "predicted_value": round(value, 2),
+                   "target_date": target.isoformat(), "model_version": result.get("model_version", MODEL_VERSION)}
+            if with_ranges and result.get("ranges"):
+                _, low, high = result["ranges"][i]
+                row.update(low=round(low, 2), high=round(high, 2))
+            rows.append(row)
+    return rows
+
+
+def forecast_history(forecasts):
+    """{prediction_type: [{"week_start", "value"}]} - the weekly history each forecast was fitted on."""
+    results = list(forecasts.values()) + list(forecasts.get("health_score", {}).get("categories", {}).values())
+    return {result["metric"]: [{"week_start": monday.isoformat(), "value": round(float(value), 2)}
+                               for monday, value in result["history"]]
+            for result in results}
 
 
 HISTORY_TABLES = {
@@ -287,18 +374,19 @@ def health_context(client, profile, history, today):
     origin = last_complete_week(today)
     logged = [to_date(r["workout_date"]) for r in history["workout_logs"] if r.get("workout_date")]
     logged += [to_date(r["log_date"]) for r in history["activity_logs"] if r.get("log_date")]
-    first = max(week_start(min([to_date(profile["created_at"])] + logged)),
+    first_day = min([to_date(profile["created_at"])] + logged)
+    first = max(origin + timedelta(weeks=first_full_week(first_day, origin)),
                 origin - timedelta(weeks=MAX_HEALTH_WEEKS - 1))
+    # One load of the user's settings and logs, then each week is scored in memory.
+    ctx = repo.load_contexts(client, profile["user_id"])[profile["user_id"]]
+    logs = repo.load_logs(client, first, origin + timedelta(days=6), profile["user_id"])[profile["user_id"]]
+    weights, _ = repo.active_weights(client)
     weeks = []
     monday = first
     while monday <= origin:
-        result, _ = repo.calculate(client, profile["user_id"], "week", monday + timedelta(days=6))
-        weeks.append((monday, result))
+        weeks.append((monday, repo.score(ctx, logs, weights, monday, monday + timedelta(days=6))))
         monday += timedelta(weeks=1)
-    return {
-        "workout_days": repo.workout_days_per_week(client, profile["user_id"], profile),
-        "health": {"weeks": weeks, "weights": repo.active_weights(client)[0]},
-    }
+    return {"workout_days": ctx.days_per_week, "health": {"weeks": weeks, "weights": weights}}
 
 
 def forecast_from_supabase(client, user_id, today=None, context=health_context):

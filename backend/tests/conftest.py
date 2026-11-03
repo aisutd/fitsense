@@ -22,6 +22,9 @@ UPSERT_KEYS = {
     "activity_logs": ("user_id", "log_date"),
     "fdc_foods": ("fdc_id",),
     "fdc_search_cache": ("query",),
+    "league_seasons": ("season_start",),
+    "league_season_scores": ("season_start", "user_id"),
+    "user_avatars": ("user_id", "avatar_id"),
 }
 GENERATED_IDS = {
     "workout_logs": "workout_log_id",
@@ -36,9 +39,10 @@ GENERATED_IDS = {
     "accounts": "user_id",
     "meal_items": "meal_item_id",
     "fdc_food_portions": "portion_id",
+    "user_gamification": "user_id",
 }
 UNIQUE_COLUMNS = {"accounts": "username"}
-TIMESTAMP_COLUMNS = {"health_scores": "calculated_at"}
+TIMESTAMP_COLUMNS = {"health_scores": "calculated_at", "workout_logs": None}   # None: the table has no timestamp
 
 _clock = count()
 _epoch = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -61,6 +65,7 @@ class FakeQuery:
         self.on_conflict = None
         self.filters = []
         self.order_by = None
+        self.offset = 0
         self.max_rows = None
 
     # writes
@@ -110,6 +115,10 @@ class FakeQuery:
         self.max_rows = n
         return self
 
+    def range(self, first, last):
+        self.offset, self.max_rows = first, last - first + 1
+        return self
+
     def _check_fk(self, row):
         if self.name != "profiles" and "user_id" in row and row["user_id"] not in self.db.tables.get("profiles", {}):
             raise APIError({"code": "23503", "message": "violates foreign key constraint"})
@@ -142,7 +151,8 @@ class FakeQuery:
                 if unique and any(r[unique] == payload[unique] for r in self.rows.values()):
                     raise APIError({"code": "23505", "message": "duplicate key value violates unique constraint"})
                 id_col = GENERATED_IDS[self.name]
-                row = {id_col: str(uuid4()), TIMESTAMP_COLUMNS.get(self.name, "created_at"): _now(), **payload}
+                stamp = TIMESTAMP_COLUMNS.get(self.name, "created_at")
+                row = {id_col: str(uuid4()), **({stamp: _now()} if stamp else {}), **payload}
                 self.rows[row[id_col]] = row
                 inserted.append(row)
             return SimpleNamespace(data=inserted)
@@ -164,7 +174,7 @@ class FakeQuery:
             column, desc = self.order_by
             result.sort(key=lambda r: r[column], reverse=desc)
         if self.max_rows is not None:
-            result = result[: self.max_rows]
+            result = result[self.offset: self.offset + self.max_rows]
         return SimpleNamespace(data=result)
 
 
@@ -231,6 +241,8 @@ class FakeSupabase:
     def rpc(self, name, params):
         if name == "search_fdc_foods":
             return FakeSearchRpc(self, params)
+        if name == "finalize_league_season":
+            return SimpleNamespace(execute=lambda: SimpleNamespace(data=False))
         assert name == "award_points"
         return FakeRpc(self, params)
 

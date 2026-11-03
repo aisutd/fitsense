@@ -4,13 +4,18 @@ import PixelBackground from "./components/PixelBackground";
 import PixelTransition from "./components/PixelTransition";
 import { NameGreeting, Information, GoalScreen, Proficiency, WorkoutDays, WorkoutLocation } from "./screens/Onboarding";
 import HealthScore from "./screens/HealthScore";
+import Forecast from "./screens/Forecast";
+import WorkoutPlan from "./screens/WorkoutPlan";
 import Auth from "./screens/Auth";
 import { fromApiProfile, getProfile, profileErrorMessage, saveProfile, toApiProfile } from "./api";
 
-// Screens: -1 log in / sign up, 0 loading the player, 1-6 onboarding, 7 HealthScore.
+// Screens: -1 log in / sign up, 0 loading the player, 1-6 onboarding, 7 HealthScore, 8 Forecast, 9 Plan.
 const AUTH = -1;
 const LOADING = 0;
 const DASHBOARD = 7;
+const FORECAST = 8;
+const PLAN = 9;
+const TAB_SCREENS = { health: DASHBOARD, forecast: FORECAST, plan: PLAN };
 
 const USER_KEY = "fitsense:userId";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -212,11 +217,32 @@ function App() {
         saveError={saveError}
       />
     );
-  } else {
+  } else if (screen === DASHBOARD) {
     content = (
       <HealthScore
         userId={userId}
         profile={{ name, age, weight, feet, inches, goal, proficiency, workoutDays, workoutLocation }}
+        onEditProfile={() => goTo(1)}
+        onLogout={handleLogout}
+        onNavigate={(tab) => goTo(TAB_SCREENS[tab])}
+      />
+    );
+  } else if (screen === PLAN) {
+    content = (
+      <WorkoutPlan
+        userId={userId}
+        profile={{ name }}
+        onEditProfile={() => goTo(1)}
+        onLogout={handleLogout}
+        onNavigate={(tab) => goTo(TAB_SCREENS[tab])}
+      />
+    );
+  } else {
+    content = (
+      <Forecast
+        userId={userId}
+        profile={{ name, age, weight, feet, inches, goal, proficiency, workoutDays, workoutLocation }}
+        onNavigate={(tab) => goTo(TAB_SCREENS[tab])}
         onEditProfile={() => goTo(1)}
         onLogout={handleLogout}
       />

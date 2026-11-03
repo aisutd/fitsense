@@ -89,6 +89,32 @@ def score_workouts(statuses: list[str], days_per_week: int | None, window_days: 
     return CategoryResult(workout_score(completed, scheduled), details)
 
 
+STATUS_CREDIT = {"completed": 1.0, "partial": PARTIAL_WORKOUT_CREDIT, "skipped": 0.0}
+
+
+def score_workout_day(statuses: list[str], days_per_week: int | None, done_earlier_this_week: float,
+                      days_left_this_week: int) -> CategoryResult:
+    """One day's workout score.
+
+    statuses: workouts logged that day (the best one counts: completed 100, partial 50, skipped 0).
+    With nothing logged the day is a rest day and left out - unless skipping it makes the week's
+    plan impossible (more workouts still needed than days left after today), which scores 0.
+    done_earlier_this_week: credit of workouts from Monday up to the day before.
+    days_left_this_week: days from this day to Sunday, including this day (Monday = 7).
+    """
+    details = {"logged": len(statuses), "planned_per_week": days_per_week,
+               "done_earlier_this_week": done_earlier_this_week}
+    if not days_per_week:
+        return CategoryResult(None, {**details, "reason": "no_workout_plan"})
+    if statuses:
+        best = max(statuses, key=lambda s: STATUS_CREDIT.get(s, 0.0))
+        return CategoryResult(STATUS_CREDIT.get(best, 0.0) * 100.0, {**details, "status": best})
+    still_needed = days_per_week - done_earlier_this_week
+    if still_needed > days_left_this_week - 1 + 1e-9:
+        return CategoryResult(0.0, {**details, "status": "missed"})
+    return CategoryResult(None, {**details, "reason": "rest_day"})
+
+
 # --- 2. Nutrition ------------------------------------------------------------
 
 def macro_targets(calories: float, protein_g: float | None = None,

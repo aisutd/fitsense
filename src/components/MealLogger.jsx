@@ -156,10 +156,10 @@ function ItemRow({ item, busy, onChange, onRemove }) {
   );
 }
 
-function MealLogger({ userId, onLogged, onManual }) {
+function MealLogger({ userId, date: initialDate, onLogged, onManual }) {
   const today = localToday();
   const [text, setText] = useState("");
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(initialDate ?? today);
   const [mealType, setMealType] = useState("");
   const [meal, setMeal] = useState(null);
   const [newItem, setNewItem] = useState("");

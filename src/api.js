@@ -40,16 +40,29 @@ export const login = (username, password) => request("POST", "/auth/login", { us
 
 export const saveProfile = (userId, profile) => request("PUT", `/profiles/${userId}`, profile);
 export const getProfile = (userId) => request("GET", `/profiles/${userId}`);
-export const getHealthScore = (userId, range) =>
-  request("GET", `/healthscore/${userId}?range=${encodeURIComponent(range)}&end_date=${localToday()}`);
+// range "day" scores just endDate; "week"/"month" score the window ending on it.
+export const getHealthScore = (userId, range, endDate = localToday()) =>
+  request("GET", `/healthscore/${userId}?range=${encodeURIComponent(range)}&end_date=${endDate}`);
+// Everything logged on one day (sleep = the night before it).
+export const getDayLog = (userId, date) => request("GET", `/logs/${userId}/day/${date}`);
+export const getForecasts = (userId) => request("GET", `/forecasts/${userId}`);
+export const getGamification = (userId) => request("GET", `/gamification/${userId}`);
+export const getLeague = (userId) => request("GET", `/gamification/${userId}/league`);
+export const getAvatarInventory = (userId) => request("GET", `/gamification/${userId}/avatars`);
+export const purchaseAvatar = (userId, avatarId) => request("POST", `/gamification/${userId}/avatars/${avatarId}/purchase`);
+export const equipAvatar = (userId, avatarId) => request("PUT", `/gamification/${userId}/avatars/${avatarId}/equip`);
 
 // Logging: each one feeds a HealthScore category.
-export const logWorkout = (userId, workoutDate, completionStatus, durationMinutes) =>
+// plan: { planId, dayNumber } to log a specific workout-plan day; otherwise the backend links the
+// workout to that week's next open plan day.
+export const logWorkout = (userId, workoutDate, completionStatus, durationMinutes, plan) =>
   request("POST", `/logs/${userId}/workouts`, {
     workout_date: workoutDate,
     completion_status: completionStatus,
     duration_minutes: durationMinutes ?? null,
+    ...(plan ? { plan_id: plan.planId, day_number: plan.dayNumber } : {}),
   });
+export const getCurrentPlan = (userId) => request("GET", `/plans/${userId}/current?today=${localToday()}`);
 export const logSleep = (userId, date, hoursSlept) =>
   request("PUT", `/logs/${userId}/sleep/${date}`, { hours_slept: hoursSlept });
 export const logActivity = (userId, date, steps) => request("PUT", `/logs/${userId}/activity/${date}`, { steps });

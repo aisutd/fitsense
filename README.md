@@ -37,6 +37,7 @@ This is a generic starter configuration. The team can add project-specific depen
    - `005_accounts.sql`: username/password accounts for the testing login
    - `006_food_logging.sql`: FoodData Central search cache and the meal-review fields on `meal_items`
    - `007_food_search.sql`: search index and `search_fdc_foods` function for the local USDA food copy
+   - `008_leagues_fitcoins.sql`: FitCoins wallet, avatar inventory, four-week league seasons, and promotion rules
 3. Run `docker compose up -d --build`. The API is at http://localhost:8000, and interactive docs are at http://localhost:8000/docs.
 4. Load the USDA food data (once per Supabase project; about 30 seconds):
    `docker compose run --rm backend python -m app.food.fdc_import`
@@ -87,7 +88,11 @@ Users earn points for actions. The backend decides how many points each action i
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/gamification/{user_id}/points` | Add points for an action. Body: `{"action": "workout_completed", "source_id": "<optional>"}` |
-| `GET` | `/gamification/{user_id}` | Total points, level, and progress toward the next level |
+| `GET` | `/gamification/{user_id}` | Total points, level, FitCoins, and equipped avatar |
+| `GET` | `/gamification/{user_id}/league` | Current four-week league, private-score ranking, and top-five podium |
+| `GET` | `/gamification/{user_id}/avatars` | FitCoin balance, avatar shop, owned badges, and streaks |
+| `POST` | `/gamification/{user_id}/avatars/{avatar_id}/purchase` | Buy an avatar with FitCoins |
+| `PUT` | `/gamification/{user_id}/avatars/{avatar_id}/equip` | Equip an owned avatar |
 | `GET` | `/gamification/{user_id}/history` | Recent point awards, newest first (`?limit=` 1–100, default 20) |
 | `GET` | `/gamification/actions` | Every action and its point value |
 | `GET` | `/gamification/levels` | Minimum points for each level |
@@ -111,27 +116,35 @@ Example: a user at 200 points completes a workout, so `POST {"action": "workout_
 - **`source_id`** is optional. Pass the ID of what earned the points (e.g. a workout log ID); the same source is only rewarded once per action, so retries can't double-count. The response then has `"awarded": false`.
 - **Response** includes `points_awarded`, `total_points`, `level`, `previous_level`, `leveled_up`, `next_level_points`, `points_to_next_level` and `progress_percent`.
 - Points are stored in `user_gamification.total_xp` (running total) and `xp_events` (history). The `award_points` database function updates both in one transaction, so simultaneous awards can't lose points.
+- FitCoins are a separate spendable balance. A completed workout grants 50 XP and 10 FitCoins; partial workouts, sleep, meals, daily goals, and seven-day workout streaks have backend-set rewards. Repeated logs do not pay twice for the same source.
+- League seasons last four weeks. Standings use the season-to-date HealthScore and consistency (days with any check-in), while the exact ranking score stays hidden. **Every player with a season HealthScore is ranked**, whether or not they've opened the league page: standings are computed for everyone in one bulk pass and stored in `league_season_scores`, refreshed at most every 10 minutes (after the response, so nobody waits for it). With at least five scored players in a league, the top 20% move up and the bottom 20% move down when the season closes; smaller leagues hold their tiers. The podium shows the top five.
+- Completing a first or tenth workout, or a seven-day workout streak, unlocks a badge and a FitCoin bonus. FitCoins buy avatars in the dashboard shop; the starter avatar is free.
 - Unknown users get `404`; unknown actions get `422`.
 
 ### HealthScore
 
-An overall 0–100 score from four categories: **workouts 30%, nutrition 25%, sleep 25%, activity 20%** (weights come from the newest `health_score_config` row). The calculation is in `backend/app/healthscore.py` as reusable functions, one per category.
+An overall 0–100 score from four categories: **workouts 30%, nutrition 25%, sleep 25%, activity 20%** (weights come from the newest `health_score_config` row). The calculation is in `backend/app/healthscore.py` as reusable functions, one per category; `healthscore_repo.py` loads one user's logs (or everyone's, in a few bulk queries) and scores them in memory.
 
-| Category | Score |
+**The screen scores one day** (`range=day`, the default), with a date picker to look back at any earlier day:
+
+| Category | That day's score |
 |---|---|
-| Workouts | completed ÷ scheduled × 100, capped at 100 (partial = half). Scheduled = days per week from the newest workout plan, else onboarding, scaled to the window. |
-| Nutrition | how closely daily totals from **confirmed meals** match the targets (calories 40%, protein 30%, carbs 15%, fat 15%). Needs meals on 3+ days. Without a nutrition goal, targets are estimated from the profile. |
-| Sleep | closeness to the sleep target (default 8 h): 7 h → 88 |
+| Workouts | completed 100, partial 50, skipped 0. A day with nothing logged is a **rest day** (left out, not "missing"), unless skipping it makes the week's plan impossible (more planned workouts still needed than days left after it), which scores 0. Planned days per week come from the newest workout plan, else onboarding. Days before sign-up never count as missed. |
+| Nutrition | how closely the day's **confirmed meals** match the targets (calories 40%, protein 30%, carbs 15%, fat 15%). Without a nutrition goal, targets are estimated from the profile. |
+| Sleep | the night *before* the day (the one you woke up from), closeness to the sleep target (default 8 h): 7 h → 88 |
 | Activity | min(100, steps ÷ step target × 100), default 8,000 steps; active minutes (default 30) when no steps are logged |
 
-A category without enough data is left out and the overall score is marked `provisional`; with no data at all, `overall_score` is `null`. HealthScore is a motivational wellness metric, not a medical assessment.
+`range=week|last-week|month` scores a window instead (used by leagues and forecasts): workouts completed ÷ scheduled, nutrition needs meals on 3+ days, sleep and activity are averaged.
+
+A category without data is left out and the overall score is marked `provisional` (a rest day doesn't count as missing); with no data at all, `overall_score` is `null`. HealthScore is a motivational wellness metric, not a medical assessment.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/healthscore/{user_id}?range=week\|last-week\|month&end_date=YYYY-MM-DD` | Calculate the score (last 7 days, the 7 before that, or last 30 days) |
+| `GET` | `/healthscore/{user_id}?range=day\|week\|last-week\|month&end_date=YYYY-MM-DD` | Score one day (default) or a window ending on `end_date` (send the user's local date) |
+| `GET` | `/logs/{user_id}/day/{date}` | Everything logged that day: workouts, steps, confirmed meals, and the night of sleep before it |
 | `POST` | `/healthscore/{user_id}/snapshots` | Calculate and save to `health_scores` |
 | `GET` | `/healthscore/{user_id}/history` | Saved scores, newest first |
-| `POST` | `/logs/{user_id}/workouts` | Log a workout (`completed`, `partial`, `skipped`) |
+| `POST` | `/logs/{user_id}/workouts` | Log a workout (`completed`, `partial`, `skipped`). Without `plan_id`/`day_number` it's linked to that week's next open workout-plan day. |
 | `PUT` | `/logs/{user_id}/sleep/{date}` | Log (or replace) a night's sleep |
 | `PUT` | `/logs/{user_id}/activity/{date}` | Log (or replace) a day's steps / active minutes |
 | `POST` | `/logs/{user_id}/meals` | Store a confirmed meal's nutrition (from the food-logging pipeline) |
@@ -187,7 +200,8 @@ To create sample players (`ava`, `ben`, `cara`, `dev`) with logs, run `python ba
 whose `.env` points at that project can log in as any of them. They have varied profiles and two weeks of logs with
 different habits (on track, mixed, struggling, logs only some categories, lapsed, brand new), so HealthScores range from
 none to 100. `python backend/scripts/seed_test_users.py` recreates them in another Supabase project (`--count N` for fewer);
-it's safe to re-run and checks every login.
+it's safe to re-run and checks every login. Each run also **fills in the last 7 days** of logs in every player's habits
+(`--refresh-days N`; only empty days/categories, so hand-logged data stays): re-run it every few days to keep "today" populated.
 
 ### Tests
 
@@ -198,10 +212,16 @@ pytest                                        # unit tests, no Supabase needed
 python scripts/smoke_test_profiles.py         # live tests against the running backend + Supabase
 python scripts/smoke_test_gamification.py
 python scripts/seed_sample_users.py           # sample players + HealthScore checks against the spec's examples
-python scripts/seed_test_users.py             # 200 test players (tester001-tester200) with varied habits
+python scripts/seed_test_users.py             # 200 test players (tester001-tester200) + their last 7 days of logs
 python scripts/smoke_test_food.py             # food logging end to end (real model, FDC and Supabase)
 python ml/food_ner/evaluate.py                # food model accuracy on the hand-written test set
 ```
+
+## Wearables and smartwatches
+
+Options for importing steps, sleep and workouts from watches and phones (Apple Health, Health Connect,
+Oura, Polar, Garmin, Fitbit, aggregators), what each needs, and a phased plan:
+[docs/wearable-integration.md](docs/wearable-integration.md).
 
 ## Workout recommender and XGBoost ranker
 
@@ -225,6 +245,11 @@ until a model is saved, recommendations use the rule-based order.
 logs (`plan_id` + `day_number`): a full week progresses the dose, a missed one cuts days and
 volume, and exercises on skipped days are swapped. Run `backend/sql/002_weekly_plans.sql` first.
 
+**In the app**: the **Plan** tab shows this week's plan (`GET /plans/{user_id}/current?today=YYYY-MM-DD`,
+built and saved on first view by `backend/app/plans.py`), why it changed from last week, and buttons to
+log each plan day. Workouts logged anywhere else (the HealthScore page's Workout tab) are linked to the
+week's next open plan day, and older unlinked logs are matched the same way, so the adaptation sees them.
+
 ```bash
 python weekly_plan.py weekly [--dry-run]   # this week's plan for every user who has none
 ```
@@ -247,8 +272,18 @@ once the app saves `plan_id` and `day_number` with each logged workout.
 ## Weekly progress forecast (linear regression + XGBoost)
 
 `progress_forecast.py` forecasts body weight, completed workouts per week, daily steps and
-HealthScore 1, 4 and 12 weeks ahead. Each metric is averaged per week (Monday–Sunday, UTC; the
-current, unfinished week is left out) and fit with a weighted linear regression:
+HealthScore 1, 4 and 12 weeks ahead, each with an **80% range**. The app shows them on the Forecast tab
+(`GET /forecasts/{user_id}`: predictions with `low`/`high`, plus the weekly history they were fitted on).
+Each metric is averaged per week (Monday–Sunday, UTC; the current, unfinished week is left out) and fit
+with a weighted linear regression:
+
+- **Damped trend**: next week follows the fitted trend, later weeks less and less (Holt's damped
+  trend, `DAMPING = 0.8`), so a trend from a few noisy weeks can't run away over 12 weeks: the total
+  change is at most 5 weeks' worth of the current trend.
+- **Only full weeks**: the week a user joined (unless on a Monday) is left out, and a week of steps
+  needs at least 3 logged days, so a partial week doesn't fake a trend.
+- **Realistic bounds**: workouts never go above the plan or the user's best week so far; ranges come
+  from the user's week-to-week variation, blended with a typical spread per metric while data is thin.
 
 - **Adapts weekly**: it is refit every week, and a week 4 weeks old counts half as much as the
   latest one, so a change in habits shows up in the next forecast.
@@ -258,8 +293,8 @@ current, unfinished week is left out) and fit with a weighted linear regression:
   no change). With little data the prior dominates; after about a month the user's own trend does.
 - **Weight uses the workout forecast**: the goal's expected weight change is scaled by the share
   of planned workouts the user is forecast to complete, and capped at ±1 kg/week.
-- **HealthScore comes from the HealthScore screen's own code**: each past week is scored by
-  `backend/app/healthscore_repo.calculate` (the "Last 7 Days" view for that week), then the
+- **HealthScore comes from the HealthScore screen's own code**: each past week is scored as a
+  7-day window by `backend/app/healthscore_repo.score` (in memory, from one load of the user's logs), then the
   workouts, nutrition, sleep and activity scores are forecast separately and combined with the
   active `health_score_config` weights, exactly as the screen combines them. Categories the user
   hasn't logged are left out and the rest re-weighted, like the screen's provisional score. Each

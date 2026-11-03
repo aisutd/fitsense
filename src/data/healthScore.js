@@ -1,11 +1,6 @@
 // Turns the backend's HealthScore response (GET /healthscore/{user_id}) into
 // what the HealthScore screen shows: scores, notes and empty states.
-
-export const RANGES = [
-  { id: "week", label: "Last 7 Days" },
-  { id: "last-week", label: "Previous 7 Days" },
-  { id: "month", label: "Last 30 Days" },
-];
+// The screen shows one day at a time; week/month windows are still supported for other views.
 
 // Colours from the HealthScore spec: blue workouts, coral nutrition,
 // purple sleep, green activity.
@@ -18,9 +13,40 @@ export const CATEGORIES = [
 
 const num = (n) => Number(n).toLocaleString("en-US", { maximumFractionDigits: 1 });
 const plural = (n, word) => `${num(n)} ${word}${n === 1 ? "" : "s"}`;
+const shortDate = (iso) =>
+  new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+const weekSoFar = (d) => `${num(d.done_earlier_this_week)} of ${plural(d.planned_per_week, "workout")} done earlier this week.`;
 
-// One line under each category score, built from the backend's details.
-const NOTES = {
+// One line under each category score for a single day.
+const DAY_NOTES = {
+  workouts: (d) =>
+    d.status === "missed"
+      ? `No workout, and this week's plan no longer fits without it. ${weekSoFar(d)}`
+      : `Workout ${d.status}. ${weekSoFar(d)}`,
+  nutrition: (d) =>
+    `${num(d.average.calories)} of ${num(d.targets.calories)} kcal and ${num(d.average.protein_g)} of ${num(
+      d.targets.protein_g
+    )} g protein${d.targets_estimated ? " (estimated targets)" : ""}.`,
+  sleep: (d) =>
+    `${num(d.average_hours)} of ${num(d.target_hours)} hours, night of ${shortDate(d.night_of)}${
+      d.sleep_quality ? `, quality ${d.sleep_quality}/5` : ""
+    }.`,
+  activity: (d) =>
+    d.average_steps != null
+      ? `${num(d.average_steps)} of ${num(d.steps_target)} steps.`
+      : `${num(d.average_active_minutes)} of ${num(d.active_minutes_target)} active minutes.`,
+};
+
+const DAY_EMPTY = {
+  rest_day: (d) => `Rest day. ${weekSoFar(d)}`,
+  before_signup: "Before you joined.",
+  not_enough_meals_logged: "No meals logged this day.",
+  no_sleep_logged: "No sleep logged for the night before.",
+  no_activity_logged: "No steps or active minutes logged.",
+};
+
+// Notes for a multi-day window.
+const WINDOW_NOTES = {
   workouts: (d) => `${num(d.completed)} of ${plural(d.scheduled, "planned workout")} completed.`,
   nutrition: (d) =>
     `${num(d.average.calories)} of ${num(d.targets.calories)} kcal and ${num(d.average.protein_g)} of ${num(
@@ -33,32 +59,40 @@ const NOTES = {
       : `${num(d.average_active_minutes)} of ${num(d.active_minutes_target)} active minutes per day.`,
 };
 
-const EMPTY_NOTES = {
-  no_workout_plan: "Set your workout days to track this.",
+const WINDOW_EMPTY = {
   no_workouts_logged: "No workouts logged yet.",
-  no_nutrition_targets: "Set a nutrition goal to track this.",
   not_enough_meals_logged: (d) => `Log meals on ${plural(d.days_needed, "day")} to unlock (${d.days_logged} so far).`,
   no_sleep_logged: "No sleep logged yet.",
   no_activity_logged: "No steps or active minutes logged yet.",
 };
 
-function note(key, details) {
-  if (details.available) return NOTES[key](details);
-  const empty = EMPTY_NOTES[details.reason];
+const COMMON_EMPTY = {
+  no_workout_plan: "Set your workout days to track this.",
+  no_nutrition_targets: "Set a nutrition goal to track this.",
+};
+
+function note(key, details, isDay) {
+  if (details.available) return (isDay ? DAY_NOTES : WINDOW_NOTES)[key](details);
+  const empty = (isDay ? DAY_EMPTY : WINDOW_EMPTY)[details.reason] ?? COMMON_EMPTY[details.reason];
   return typeof empty === "function" ? empty(details) : empty ?? "Not enough data yet.";
 }
 
+const NOT_EXPECTED = ["rest_day", "before_signup"];
+
 export function toViewModel(result) {
+  const isDay = result.range?.key === "day";
   const scores = Object.fromEntries(
     CATEGORIES.map((c) => {
       const details = result.categories[c.key];
-      return [c.key, { score: details.score, available: details.available, note: note(c.key, details) }];
+      return [c.key, { score: details.score, available: details.available, note: note(c.key, details, isDay) }];
     })
   );
   return {
     overall: result.overall_score,
     provisional: result.provisional,
-    missing: CATEGORIES.filter((c) => !scores[c.key].available).map((c) => c.label),
+    // a rest day isn't missing data
+    missing: CATEGORIES.filter((c) => !scores[c.key].available && !NOT_EXPECTED.includes(result.categories[c.key].reason))
+      .map((c) => c.label),
     disclaimer: result.disclaimer,
     scores,
   };

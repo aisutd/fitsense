@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,7 +6,10 @@ from postgrest.exceptions import APIError
 from supabase import Client
 
 from app import healthscore_repo as repo
+from app import plans
 from app.database import get_supabase
+from app.gamification import PointAction
+from app.gamification_service import award_action, record_workout_streak
 from app.schemas import ActivityLogIn, GoalsIn, GoalsOut, MealLogIn, SleepLogIn, WorkoutLogIn
 
 router = APIRouter(tags=["logs & goals"])
@@ -25,25 +28,77 @@ def _write(action: str, run):
     return response.data[0] if response.data else None
 
 
+@router.get("/logs/{user_id}/day/{log_date}")
+def get_day(user_id: UUID, log_date: date, supabase: Client = Depends(get_supabase)):
+    """Everything logged for one day: workouts, steps, confirmed meals, and the night of sleep
+    before it (the one the daily HealthScore uses)."""
+    uid, day = str(user_id), log_date.isoformat()
+    night = (log_date - timedelta(days=1)).isoformat()
+    try:
+        repo.get_profile(supabase, uid)
+        workouts = (supabase.table("workout_logs").select("workout_log_id, completion_status, duration_minutes")
+                    .eq("user_id", uid).eq("workout_date", day).execute().data)
+        sleep = (supabase.table("sleep_logs").select("sleep_date, hours_slept, sleep_quality")
+                 .eq("user_id", uid).eq("sleep_date", night).limit(1).execute().data)
+        activity = (supabase.table("activity_logs").select("steps, active_minutes, calories_burned")
+                    .eq("user_id", uid).eq("log_date", day).limit(1).execute().data)
+        meals = (supabase.table("meal_entries").select("meal_id, meal_type, display_name, calories, protein_g, carbs_g, fat_g, created_at")
+                 .eq("user_id", uid).eq("log_date", day).eq("status", "confirmed").order("created_at").execute().data)
+    except APIError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to load the day: {e.message}")
+    return {"date": day, "workouts": workouts, "sleep": sleep[0] if sleep else None,
+            "activity": activity[0] if activity else None, "meals": meals}
+
+
 @router.post("/logs/{user_id}/workouts")
 def log_workout(user_id: UUID, body: WorkoutLogIn, supabase: Client = Depends(get_supabase)):
     """Record a workout (completed, partial or skipped)."""
     row = {"user_id": str(user_id), **body.model_dump(mode="json")}
-    return _write("log workout", lambda: supabase.table("workout_logs").insert(row).execute())
+    if body.plan_id is None:
+        # count it toward that week's workout plan (its next open day), so the plan can adapt
+        try:
+            linked = plans.plan_day_for(supabase, str(user_id), body.workout_date)
+        except APIError:
+            linked = None
+        if linked:
+            row["plan_id"], row["day_number"] = linked
+    saved = _write("log workout", lambda: supabase.table("workout_logs").insert(row).execute())
+    reward = None
+    streak = None
+    if body.completion_status.value == "completed":
+        reward = award_action(supabase, str(user_id), PointAction.workout_completed, saved["workout_log_id"])
+        streak = record_workout_streak(supabase, str(user_id), body.workout_date)
+        if streak and streak.get("reward"):
+            streak_reward = streak["reward"]
+            reward["points_awarded"] += streak_reward["points_awarded"]
+            reward["fitcoins_awarded"] += streak_reward["fitcoins_awarded"]
+            reward["fitcoins_balance"] = streak_reward["fitcoins_balance"]
+            reward["badges_earned"].extend(streak_reward["badges_earned"])
+    elif body.completion_status.value == "partial":
+        reward = award_action(supabase, str(user_id), PointAction.workout_partial, saved["workout_log_id"])
+    return {**saved, "rewards": reward, "streak": streak}
 
 
 @router.put("/logs/{user_id}/sleep/{sleep_date}")
 def log_sleep(user_id: UUID, sleep_date: date, body: SleepLogIn, supabase: Client = Depends(get_supabase)):
     """Record (or replace) the sleep for the night starting on sleep_date."""
     row = {"user_id": str(user_id), "sleep_date": sleep_date.isoformat(), **body.model_dump(mode="json")}
-    return _write("log sleep", lambda: supabase.table("sleep_logs").upsert(row, on_conflict="user_id,sleep_date").execute())
+    saved = _write("log sleep", lambda: supabase.table("sleep_logs").upsert(row, on_conflict="user_id,sleep_date").execute())
+    reward = award_action(supabase, str(user_id), PointAction.sleep_logged, sleep_date.isoformat())
+    return {**saved, "rewards": reward}
 
 
 @router.put("/logs/{user_id}/activity/{log_date}")
 def log_activity(user_id: UUID, log_date: date, body: ActivityLogIn, supabase: Client = Depends(get_supabase)):
     """Record (or replace) a day's steps and/or active minutes."""
     row = {"user_id": str(user_id), "log_date": log_date.isoformat(), **body.model_dump(mode="json")}
-    return _write("log activity", lambda: supabase.table("activity_logs").upsert(row, on_conflict="user_id,log_date").execute())
+    saved = _write("log activity", lambda: supabase.table("activity_logs").upsert(row, on_conflict="user_id,log_date").execute())
+    profile = repo.get_profile(supabase, str(user_id))
+    targets = repo.current_goals(supabase, str(user_id), profile)
+    met_steps = body.steps is not None and body.steps >= targets["daily_steps"]
+    met_minutes = body.active_minutes is not None and body.active_minutes >= targets["daily_active_minutes"]
+    reward = award_action(supabase, str(user_id), PointAction.daily_goals_met, log_date.isoformat()) if (met_steps or met_minutes) else None
+    return {**saved, "rewards": reward}
 
 
 @router.post("/logs/{user_id}/meals")
@@ -58,7 +113,9 @@ def log_meal(user_id: UUID, body: MealLogIn, supabase: Client = Depends(get_supa
         "status": "confirmed",
         "confirmed_at": datetime.now(timezone.utc).isoformat(),
     }
-    return _write("log meal", lambda: supabase.table("meal_entries").insert(row).execute())
+    saved = _write("log meal", lambda: supabase.table("meal_entries").insert(row).execute())
+    reward = award_action(supabase, str(user_id), PointAction.meal_logged, saved["meal_id"])
+    return {**saved, "rewards": reward}
 
 
 @router.get("/goals/{user_id}", response_model=GoalsOut)

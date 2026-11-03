@@ -93,6 +93,8 @@ class PointsStatus(BaseModel):
     next_level_points: int | None
     points_to_next_level: int | None
     progress_percent: float
+    fitcoins: int = 0
+    equipped_avatar: str = "starter"
 
 
 class AwardPointsOut(PointsStatus):
@@ -101,6 +103,8 @@ class AwardPointsOut(PointsStatus):
     awarded: bool = Field(description="False when this source was already rewarded for this action")
     previous_level: int
     leveled_up: bool
+    fitcoins_awarded: int = 0
+    badges_earned: list[dict] = Field(default_factory=list)
 
 
 class PointEvent(BaseModel):
@@ -126,6 +130,7 @@ class LevelInfo(BaseModel):
 # --- HealthScore ---------------------------------------------------------------
 
 class HealthScoreRange(str, Enum):
+    day = "day"              # just end_date (sleep: the night before it)
     week = "week"            # last 7 days, including end_date
     last_week = "last-week"  # the 7 days before that
     month = "month"          # last 30 days, including end_date
@@ -196,6 +201,7 @@ class WorkoutLogIn(BaseModel):
     completion_status: CompletionStatus = CompletionStatus.completed
     duration_minutes: int | None = Field(default=None, ge=0, le=600)
     plan_id: UUID | None = None
+    day_number: int | None = Field(default=None, ge=1, le=7, description="Which day of the plan this workout was")
 
 
 class SleepLogIn(BaseModel):

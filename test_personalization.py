@@ -302,7 +302,9 @@ class ForecastTests(unittest.TestCase):
             'body_measurements': [{'recorded_at': weeks_ago(n) + 'T07:00:00+00:00', 'weight_kg': w}
                                   for n, w in weights],
             'workout_logs': logs,
-            'activity_logs': [{'log_date': weeks_ago(n), 'steps': v} for n, v in steps],
+            # a week of steps needs MIN_DAYS_PER_WEEK logged days to count
+            'activity_logs': [{'log_date': weeks_ago(n, day), 'steps': v}
+                              for n, v in steps for day in range(forecast.MIN_DAYS_PER_WEEK)],
         }
 
     def test_fit_recovers_a_clear_trend(self):
@@ -382,6 +384,37 @@ class ForecastTests(unittest.TestCase):
         history = self.history(steps=[(n, 6000 + 250 * (11 - n)) for n in range(12)])
         result = forecast.forecast_user(self.profile(), history, TODAY)
         self.assertGreater(result['daily_steps']['slope'], 200)
+
+    def test_trend_is_damped(self):
+        # +250 steps every week for 12 weeks: the 12-week forecast levels off instead of adding 3,000
+        history = self.history(steps=[(n, 6000 + 250 * (11 - n)) for n in range(12)])
+        steps = forecast.forecast_user(self.profile(), history, TODAY)['daily_steps']
+        added = steps['predictions'][-1][1] - steps['level']
+        self.assertLess(added, steps['slope'] / (1 - forecast.DAMPING) + 1)
+        self.assertAlmostEqual(steps['predictions'][0][1] - steps['level'], steps['slope'])  # next week: full trend
+
+    def test_workouts_stay_within_the_plan_or_best_week(self):
+        history = self.history(workouts_per_week=0)
+        history['workout_logs'] = [{'workout_date': weeks_ago(n, day), 'completion_status': 'completed'}
+                                   for n in range(4) for day in range(4 - n)]   # 1, 2, 3, 4 a week: rising
+        workouts = forecast.forecast_user(self.profile(workout_frequency=3), history, TODAY)['workouts_per_week']
+        self.assertTrue(all(value <= 4 for _, value in workouts['predictions']))
+        self.assertTrue(all(high <= 4 for _, _, high in workouts['ranges']))
+
+    def test_ranges_contain_the_prediction_and_widen(self):
+        history = self.history(steps=[(n, 6000 + (300 if n % 2 else -300)) for n in range(12)])
+        steps = forecast.forecast_user(self.profile(), history, TODAY)['daily_steps']
+        widths = [high - low for _, low, high in steps['ranges']]
+        self.assertEqual(widths, sorted(widths))
+        for (_, value), (_, low, high) in zip(steps['predictions'], steps['ranges']):
+            self.assertLessEqual(low, value)
+            self.assertLessEqual(value, high)
+
+    def test_weeks_with_few_step_logs_are_skipped(self):
+        history = self.history(steps=[(n, 8000) for n in range(4)])
+        history['activity_logs'].append({'log_date': weeks_ago(6), 'steps': 500})   # one stray day
+        steps = forecast.forecast_user(self.profile(), history, TODAY)['daily_steps']
+        self.assertEqual(steps['weeks_of_data'], 4)
 
     def health_weeks(self, weeks=8, **trends):
         """Weekly backend results; trends maps category -> (score now, change per week) or None."""
@@ -474,7 +507,8 @@ class ForecastTests(unittest.TestCase):
     def test_forecast_from_supabase_reads_only_that_user(self):
         result = forecast.forecast_from_supabase(self.supabase(), 'u2', TODAY, self.no_health)
         self.assertNotIn('weight_kg', result)  # u2 has no weight and no measurements
-        self.assertEqual(result['workouts_per_week']['weeks_of_data'], 12)
+        # u2 joined on a Wednesday 11 weeks back: that partial week is left out
+        self.assertEqual(result['workouts_per_week']['weeks_of_data'], 11)
         with self.assertRaises(LookupError):
             forecast.forecast_from_supabase(self.supabase(), 'nobody', TODAY, self.no_health)
 
