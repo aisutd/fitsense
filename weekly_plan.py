@@ -13,6 +13,11 @@ week 2 on, the plan is rebuilt from last week's plan and the workout_logs linked
 On top of that, an exercise that was only on skipped days is swapped for the next-ranked one in
 its group, and one on a partial or skipped day steps down. Doses never leave the guideline range.
 
+Every week keeps at least one recovery day (MAX_TRAINING_DAYS = 6). week_schedule() places the
+training days on the calendar with recovery days between them where the week allows (ACSM: about
+48 h before training the same muscles again), and a recovery day gets an optional light routine:
+an easy walk and a few beginner stretches (recovery_routine()).
+
     python weekly_plan.py weekly [--dry-run]   # next plan for every user without one this week
 
 Run `weekly` once a week (for example from cron on Monday), after progress_forecast.py weekly.
@@ -40,6 +45,13 @@ CARDIO_STEP = 5  # minutes
 STATUS_RANK = {"skipped": 0, "partial": 1, "completed": 2}
 # Supabase allows large inserts, but smaller ones fail more gracefully.
 INSERT_CHUNK = 500
+# At least one full recovery day a week, even for a 7-day workout_frequency.
+MAX_TRAINING_DAYS = 6
+RECOVERY_WALK = "20-30 min easy walk"
+# One stretch per area, for the muscles the training days work.
+RECOVERY_AREAS = ("Lower Body", "Upper Body", "Core")
+RECOVERY_EQUIPMENT = {None, "body only", "foam roll"}
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
 def clamp(dose, bounds):
@@ -79,14 +91,19 @@ def step_down(dose, bounds):
     return dose
 
 
+def training_days(profile):
+    """Most training days a week for this profile: workout_frequency, leaving a recovery day."""
+    return min(profile["workout_frequency"], MAX_TRAINING_DAYS)
+
+
 def ranked_groups(profile, exercises, model=None):
     """Every allowed exercise per muscle group, best first."""
     return recommender.recommend_exercises(profile, exercises, model, per_group=None)
 
 
 def first_week(profile, exercises, start, model=None):
-    """Week-1 plan: the top PER_GROUP exercises per group, rotated over workout_frequency days."""
-    days = profile["workout_frequency"]
+    """Week-1 plan: the top PER_GROUP exercises per group, rotated over the training days."""
+    days = training_days(profile)
     rotations = {group: matches[:recommender.PER_GROUP]
                  for group, matches in ranked_groups(profile, exercises, model).items()}
     return assemble(profile, start, days, rotations, {})
@@ -129,12 +146,13 @@ def adaptation(profile, previous, logs):
     """("progress" | "same dose" | "reduce", days next week) from last week's completion."""
     statuses = day_statuses(previous, logs)
     rate = completion_rate(previous, logs)
+    most = training_days(profile)
     if rate >= PROGRESS_RATE and "skipped" not in statuses.values():
-        return "progress", min(profile["workout_frequency"], previous["days"] + 1)
+        return "progress", min(most, previous["days"] + 1)
     if rate >= REPEAT_RATE:
-        return "same dose", min(profile["workout_frequency"], previous["days"])
+        return "same dose", min(most, previous["days"])
     did = sum(1 for s in statuses.values() if s != "skipped")
-    return "reduce", max(1, min(profile["workout_frequency"], did + 1))
+    return "reduce", max(1, min(most, did + 1))
 
 
 def next_week(profile, exercises, previous, logs, model=None):
@@ -177,6 +195,65 @@ def next_week(profile, exercises, previous, logs, model=None):
     return assemble(profile, previous["week_start"] + timedelta(days=7), days, rotations, doses)
 
 
+def spread(count, slots):
+    """Which of `slots` consecutive days (0-based) get `count` sessions, spaced as evenly as possible.
+
+    Up to every other day, sessions get a recovery day between them (3 in 7 -> Mon Wed Fri);
+    beyond that, the recovery days are spread out instead, the last day always one so the week
+    doesn't run into next week's first session (5 in 7 -> rest Thu and Sun).
+    """
+    if count <= 0:
+        return []
+    if count >= slots:
+        return list(range(slots))
+    if count <= (slots + 1) // 2:
+        step = max(2.0, slots / count)
+        return [int(i * step) for i in range(count)]
+    rest = slots - count
+    resting = {slots - 1 - int(j * slots / rest) for j in range(rest)}
+    return [i for i in range(slots) if i not in resting]
+
+
+def week_schedule(start, days, logged, today):
+    """The week as 7 entries {date, weekday, kind: "training" | "recovery", day}.
+
+    logged maps a plan day to the date it was logged on. Past days show what happened (a day with
+    no plan workout was a recovery day); the plan days still open are spread over today..Sunday,
+    leaving a recovery day after yesterday's workout when there's room.
+    """
+    dates = [start + timedelta(days=i) for i in range(7)]
+    on_date = {}
+    for day, logged_on in sorted(logged.items()):
+        on_date.setdefault(logged_on, day)
+    open_days = [day for day in range(1, days + 1) if day not in logged]
+    free = [d for d in dates if d >= today and d not in on_date]
+    if free and (free[0] - timedelta(days=1)) in on_date and len(open_days) <= len(free) // 2:
+        free = free[1:]
+    placed = {free[i]: day for i, day in zip(spread(len(open_days), len(free)), open_days)}
+    schedule = []
+    for d in dates:
+        day = on_date.get(d) or placed.get(d)
+        schedule.append({"date": d, "weekday": WEEKDAYS[d.weekday()],
+                         "kind": "training" if day else "recovery", "day": day})
+    return schedule
+
+
+def recovery_routine(profile, exercises):
+    """A light, optional recovery-day routine: an easy walk and one beginner stretch per area."""
+    stretches = [e for e in recommender.candidate_exercises(profile, exercises)
+                 if e["category"] == "stretching" and e["level"] == "beginner" and e["equipment"] in RECOVERY_EQUIPMENT]
+    stretches.sort(key=lambda e: ("stretch" not in e["name"].lower(), e["name"]))  # holds before drills
+    routine = []
+    for area in RECOVERY_AREAS:
+        muscles = recommender.MUSCLE_GROUPS[area]
+        match = next((e for e in stretches if set(e["primaryMuscles"]) & muscles and e not in routine), None)
+        if match:
+            routine.append(match)
+    bounds = recommender.dose_range(profile, {"category": "stretching"}, 1)
+    return {"walk": RECOVERY_WALK,
+            "stretches": [{"day": 0, "group": "Mobility", "exercise": e, **starting_dose(bounds)} for e in routine]}
+
+
 def dose_text(profile, item):
     """How the dose reads in the workout, e.g. "2 sets x 10 reps" or "30 min moderate effort"."""
     category = item["exercise"]["category"]
@@ -189,7 +266,7 @@ def dose_text(profile, item):
     return f"{item['sets']} {'set' if item['sets'] == 1 else 'sets'} x {item['reps']} reps"
 
 
-def format_plan(profile, plan):
+def format_plan(profile, plan, exercises=None):
     lines = [f"\n========== FIT-SENSE WEEK OF {plan['week_start']} ==========",
              f"{profile['name']} | Age {profile['age']} | {profile['points']} points",
              f"Level: {profile['fitness_level']} | Goal: {profile['fitness_goal']} | "
@@ -204,6 +281,13 @@ def format_plan(profile, plan):
                              f"{exercise['equipment'] or 'no equipment'}): {dose_text(profile, item)}")
     if not plan["items"]:
         lines.append("No matching exercises. Add equipment in user_preferences or change the goal.")
+    schedule = week_schedule(plan["week_start"], plan["days"], {}, plan["week_start"])
+    lines.append("\nSchedule: " + ", ".join(f"{e['weekday']} {'Day ' + str(e['day']) if e['day'] else 'recovery'}"
+                                           for e in schedule))
+    if exercises:
+        routine = recovery_routine(profile, exercises)
+        lines.append(f"--- Recovery days (optional) ---\n- {routine['walk']}")
+        lines += [f"- {item['exercise']['name']}: {dose_text(profile, item)}" for item in routine["stretches"]]
     return "\n".join(lines)
 
 

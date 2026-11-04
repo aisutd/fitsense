@@ -245,9 +245,15 @@ until a model is saved, recommendations use the rule-based order.
 logs (`plan_id` + `day_number`): a full week progresses the dose, a missed one cuts days and
 volume, and exercises on skipped days are swapped. Run `backend/sql/002_weekly_plans.sql` first.
 
+**Recovery days**: every week keeps at least one (at most 6 training days, even if onboarding says 7).
+Training days are spread over the week with a recovery day between them where possible
+(3 days → Mon/Wed/Fri, 6 days → Sunday off), and the rest of the week is re-planned as days get
+logged. Recovery days come with an optional light routine: an easy walk and one beginner stretch
+each for the legs, upper body and core. The daily HealthScore treats them as rest days.
+
 **In the app**: the **Plan** tab shows this week's plan (`GET /plans/{user_id}/current?today=YYYY-MM-DD`,
-built and saved on first view by `backend/app/plans.py`), why it changed from last week, and buttons to
-log each plan day. Workouts logged anywhere else (the HealthScore page's Workout tab) are linked to the
+built and saved on first view by `backend/app/plans.py`), why it changed from last week, a week strip
+of training and recovery days, the recovery routine, and buttons to log each plan day. Workouts logged anywhere else (the HealthScore page's Workout tab) are linked to the
 week's next open plan day, and older unlinked logs are matched the same way, so the adaptation sees them.
 
 ```bash

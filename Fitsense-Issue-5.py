@@ -232,8 +232,9 @@ def main():
     import weekly_plan  # imported here: weekly_plan loads this file as its recommender
 
     model = exercise_ranker.load_model()
+    exercises = load_exercises()
     client = supabase_client()
-    print(weekly_plan.format_plan(profile, weekly_plan.current_plan(client, profile, load_exercises(), model=model)))
+    print(weekly_plan.format_plan(profile, weekly_plan.current_plan(client, profile, exercises, model=model), exercises))
     print("\nOrdered by the XGBoost ranker." if model else
           "\nNo trained ranker yet (python exercise_ranker.py train); using the rule-based order.")
     print(progress_forecast.format_forecast(progress_forecast.forecast_from_supabase(client, user_id)))

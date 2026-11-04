@@ -7,9 +7,11 @@ import { getCurrentPlan, localToday, logWorkout, validationMessage } from "../ap
 
 // This week's workout plan from the weekly plan model (weekly_plan.py): built from the profile in
 // week 1, then adapted each week to how many plan days were completed. Logging a day here links the
-// workout to that plan day, which is what next week's plan adapts to.
+// workout to that plan day, which is what next week's plan adapts to. Every week keeps at least one
+// recovery day; the week strip shows which days are for training and which for recovery.
 
 const BLUE = "#4d8dff";
+const RECOVERY = "var(--color-sleep)";
 const STATUS = {
   completed: { label: "Done", color: "var(--color-activity)" },
   partial: { label: "Partly done", color: "var(--color-gold)" },
@@ -19,6 +21,7 @@ const GROUP_COLOR = { "Upper Body": "#4d8dff", "Lower Body": "#42e08b", Core: "#
 const GOALS = { lose_weight: "Lose weight", build_muscle: "Build muscle", improve_endurance: "Endurance", general_fitness: "General fitness", increase_flexibility: "Flexibility" };
 
 const shortDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const weekdayName = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { weekday: "long" });
 
 function usePlan(userId) {
   const [state, setState] = useState({ status: "loading", plan: null, error: null });
@@ -63,6 +66,64 @@ function Exercise({ exercise }) {
   );
 }
 
+function WeekStrip({ schedule, days, today }) {
+  const byDay = Object.fromEntries(days.map((d) => [d.day, d]));
+  return (
+    <ol className="mt-8 grid grid-cols-7 gap-1.5 sm:gap-3" aria-label="This week's training and recovery days">
+      {schedule.map((entry) => {
+        const status = entry.day ? STATUS[byDay[entry.day]?.status] : null;
+        const color = entry.kind === "recovery" ? RECOVERY : status?.color ?? BLUE;
+        const isToday = entry.date === today;
+        const label = entry.kind === "recovery" ? "Recovery" : `Day ${entry.day}`;
+        const inner = (
+          <>
+            <span className={`block text-sm ${isToday ? "text-cyan" : "text-muted"}`}>{isToday ? "Today" : entry.weekday}</span>
+            <span className="block text-2xl sm:text-3xl" style={{ color }}>{entry.kind === "recovery" ? "R" : entry.day}</span>
+            <span className="hidden text-sm sm:block" style={{ color }}>{status ? status.label : label}</span>
+          </>
+        );
+        return (
+          <li key={entry.date}>
+            {entry.day ? (
+              <a href={`#plan-day-${entry.day}`} aria-label={`${weekdayName(entry.date)}: ${label}${status ? `, ${status.label}` : ""}`}
+                 aria-current={isToday ? "date" : undefined}
+                 className="px-frame px-focus block bg-night-800/90 px-1 py-2 text-center hover:bg-night-700"
+                 style={{ "--frame": isToday ? "var(--color-cyan)" : color }}>
+                {inner}
+              </a>
+            ) : (
+              <div aria-label={`${weekdayName(entry.date)}: recovery day`} aria-current={isToday ? "date" : undefined}
+                   className="px-frame block bg-night-900/70 px-1 py-2 text-center"
+                   style={{ "--frame": isToday ? "var(--color-cyan)" : "var(--color-night-600)" }}>
+                {inner}
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function RecoveryCard({ recovery, isToday }) {
+  return (
+    <section className="px-frame mt-6 bg-night-800/90 p-5 sm:p-6" style={{ "--frame": RECOVERY }} aria-labelledby="recovery-day">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="recovery-day" className="text-3xl" style={{ color: RECOVERY }}>
+          {isToday ? "Today is a recovery day" : "Recovery days"}
+        </h2>
+        <p className="text-muted">Optional and light</p>
+      </div>
+      <p className="mt-3 text-lg text-muted">
+        Rest lets your muscles rebuild, so the next workout goes better. Keep it easy: {recovery.walk}, and a few gentle stretches.
+      </p>
+      <ul className="mt-3">
+        {recovery.exercises.map((exercise) => <Exercise key={exercise.name} exercise={exercise} />)}
+      </ul>
+    </section>
+  );
+}
+
 function DayCard({ day, busy, onLog, delay }) {
   const status = day.status ? STATUS[day.status] : null;
   return (
@@ -81,7 +142,10 @@ function DayCard({ day, busy, onLog, delay }) {
             {status.label}{day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}
           </p>
         ) : (
-          <p className="text-muted">{day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"}</p>
+          <p className="text-muted">
+            {day.scheduled_on ? `${weekdayName(day.scheduled_on)} · ` : ""}
+            {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"}
+          </p>
         )}
       </div>
       <ul className="mt-3">
@@ -113,12 +177,14 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
   const { status, plan, error, reload } = usePlan(userId);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  const today = localToday();
+  const restToday = plan?.schedule?.find((entry) => entry.date === today)?.kind === "recovery";
 
   async function log(day, completion) {
     setBusy(true);
     setMessage(null);
     try {
-      const result = await logWorkout(userId, localToday(), completion, null, { planId: plan.plan_id, dayNumber: day.day });
+      const result = await logWorkout(userId, today, completion, null, { planId: plan.plan_id, dayNumber: day.day });
       const reward = result?.rewards;
       const extras = [reward?.points_awarded && `+${reward.points_awarded} XP`, reward?.fitcoins_awarded && `+${reward.fitcoins_awarded} FitCoins`]
         .filter(Boolean).join(" ");
@@ -175,14 +241,18 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
               </span>
             </p>
           )}
+          {plan.schedule && <WeekStrip schedule={plan.schedule} days={plan.days} today={today} />}
+          {plan.recovery && restToday && <RecoveryCard recovery={plan.recovery} isToday />}
           {message && (
             <p role={message.ok ? "status" : "alert"} className={`mt-6 text-lg ${message.ok ? "text-activity" : "text-nutrition"}`}>{message.text}</p>
           )}
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             {plan.days.map((day, i) => <DayCard key={day.day} day={day} busy={busy} onLog={log} delay={0.05 * i} />)}
           </div>
+          {plan.recovery && !restToday && <RecoveryCard recovery={plan.recovery} />}
           <p className="mt-10 text-center text-sm text-muted">
             Plans adapt every Monday: finish your plan days and the next week steps up; miss them and it gets lighter.
+            Every week keeps at least one recovery day; resting doesn't count against your HealthScore as long as the rest of the plan still fits in the week.
             Workouts logged on the HealthScore page count toward your next open plan day.{" "}
             <button type="button" onClick={onEditProfile} className="px-focus text-cyan hover:underline">Change goal or equipment</button>
           </p>

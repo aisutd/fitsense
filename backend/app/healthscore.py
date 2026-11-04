@@ -90,6 +90,8 @@ def score_workouts(statuses: list[str], days_per_week: int | None, window_days: 
 
 
 STATUS_CREDIT = {"completed": 1.0, "partial": PARTIAL_WORKOUT_CREDIT, "skipped": 0.0}
+# Workout plans keep at least one recovery day a week (weekly_plan.MAX_TRAINING_DAYS).
+MAX_WORKOUT_DAYS = 6
 
 
 def score_workout_day(statuses: list[str], days_per_week: int | None, done_earlier_this_week: float,
@@ -106,6 +108,7 @@ def score_workout_day(statuses: list[str], days_per_week: int | None, done_earli
                "done_earlier_this_week": done_earlier_this_week}
     if not days_per_week:
         return CategoryResult(None, {**details, "reason": "no_workout_plan"})
+    days_per_week = min(days_per_week, MAX_WORKOUT_DAYS)
     if statuses:
         best = max(statuses, key=lambda s: STATUS_CREDIT.get(s, 0.0))
         return CategoryResult(STATUS_CREDIT.get(best, 0.0) * 100.0, {**details, "status": best})

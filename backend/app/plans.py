@@ -1,7 +1,8 @@
 """This week's workout plan for one player, from the weekly plan model (weekly_plan.py at the repo root).
 
 The model builds week 1 from the profile (goal, level, location, equipment) and adapts every later
-week to how many of last week's plan days the player completed. Plans are saved in workout_plans /
+week to how many of last week's plan days the player completed. Every week keeps at least one
+recovery day; the schedule spreads the plan days over the week with recovery days between them. Plans are saved in workout_plans /
 plan_exercises; workout_logs with plan_id + day_number say how each plan day went.
 """
 
@@ -152,6 +153,16 @@ def current_plan(client, user_id: str, today: date) -> dict:
             if best is None or STATUS_RANK[log["completion_status"]] > STATUS_RANK[best["status"]]:
                 statuses[log["day_number"]] = {"status": log["completion_status"], "date": str(log["workout_date"])[:10]}
 
+    def exercise_out(item):
+        return {"name": item["exercise"]["name"], "group": item["group"], "category": item["exercise"]["category"],
+                "level": item["exercise"]["level"], "equipment": item["exercise"]["equipment"],
+                "dose": wp.dose_text(profile, item), "instructions": item["exercise"]["instructions"]}
+
+    # Which day of the week each plan day falls on, with recovery days between them.
+    logged = {day: date.fromisoformat(s["date"]) for day, s in statuses.items()}
+    schedule = wp.week_schedule(start, plan["days"], logged, today)
+    planned_on = {entry["day"]: entry["date"].isoformat() for entry in schedule if entry["day"]}
+
     days = []
     for day in range(1, plan["days"] + 1):
         items = [item for item in plan["items"] if item["day"] == day]
@@ -159,16 +170,17 @@ def current_plan(client, user_id: str, today: date) -> dict:
             "day": day,
             "status": (statuses.get(day) or {}).get("status"),
             "logged_on": (statuses.get(day) or {}).get("date"),
-            "exercises": [{
-                "name": item["exercise"]["name"], "group": item["group"], "category": item["exercise"]["category"],
-                "level": item["exercise"]["level"], "equipment": item["exercise"]["equipment"],
-                "dose": wp.dose_text(profile, item), "instructions": item["exercise"]["instructions"],
-            } for item in items],
+            "scheduled_on": planned_on.get(day),
+            "exercises": [exercise_out(item) for item in items],
         })
+    routine = wp.recovery_routine(profile, exercises())
     return {
         "plan_id": plan_id, "week_start": start.isoformat(), "week_end": (start + timedelta(days=6)).isoformat(),
         "days_per_week": plan["days"], "planned_per_profile": profile["workout_frequency"],
         "goal": profile["fitness_goal"], "level": profile["fitness_level"], "location": profile["workout_location"],
         "adaptation": adaptation, "days": days,
+        "schedule": [{"date": e["date"].isoformat(), "weekday": e["weekday"], "kind": e["kind"], "day": e["day"]}
+                     for e in schedule],
+        "recovery": {"walk": routine["walk"], "exercises": [exercise_out(item) for item in routine["stretches"]]},
         "done": sum(1 for d in days if d["status"] == "completed"),
     }
