@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import FoodSearch from "./FoodSearch";
+import { celebrate } from "../rewards";
 import {
   addMealItem,
   analyzeMeal,
@@ -166,10 +167,11 @@ function MealLogger({ userId, date: initialDate, onLogged, onManual }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
 
-  // Pick up an estimate that wasn't confirmed or discarded (e.g. the page was reloaded mid-review).
+  // Pick up an estimate that wasn't confirmed or discarded (e.g. the page was reloaded mid-review,
+  // or it was started in the ring's quick log).
   useEffect(() => {
     let active = true;
-    listMeals(userId, today, "estimated")
+    listMeals(userId, initialDate ?? today, "estimated")
       .then((meals) => {
         const open = meals.at(-1);
         if (active && open) setMeal((current) => current ?? open);
@@ -178,7 +180,7 @@ function MealLogger({ userId, date: initialDate, onLogged, onManual }) {
     return () => {
       active = false;
     };
-  }, [userId, today]);
+  }, [userId, today, initialDate]);
 
   async function run(action, success) {
     setBusy(true);
@@ -227,9 +229,11 @@ function MealLogger({ userId, date: initialDate, onLogged, onManual }) {
     if (newItem.trim().length >= 2 && !busy) add({ text: newItem.trim() });
   }
 
-  async function confirm() {
+  async function confirm(event) {
+    const anchor = event?.currentTarget;
     const m = await run(() => confirmMeal(meal.meal_id), "Meal logged. HealthScore updated.");
     if (m) {
+      celebrate(m, anchor);
       setMeal(null);
       setText("");
       onLogged();

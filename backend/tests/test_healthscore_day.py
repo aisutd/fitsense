@@ -28,8 +28,10 @@ def test_day_without_a_workout_is_missed_when_the_plan_no_longer_fits():
     assert result.score == 0 and result.details["status"] == "missed"
 
 
-def test_every_day_counts_on_a_seven_day_plan():
-    assert hs.score_workout_day([], 7, 0, 7).score == 0
+def test_a_seven_day_plan_still_gets_one_recovery_day():
+    # plans keep a recovery day, so 7 a week is treated as 6: one rest day is fine, a second is missed
+    assert hs.score_workout_day([], 7, 0, 7).details["reason"] == "rest_day"
+    assert hs.score_workout_day([], 7, 0, 6).details["status"] == "missed"
 
 
 def test_daily_score_is_the_default_and_uses_only_that_day(client):

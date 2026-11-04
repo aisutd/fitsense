@@ -403,3 +403,8 @@ class MealOut(BaseModel):
     status: str
     totals: dict[str, float]
     items: list[MealItemOut]
+
+
+class ConfirmedMealOut(MealOut):
+    rewards: dict | None = None
+    checkin_streak: int | None = None
