@@ -239,6 +239,20 @@ input[type="number"] {
   animation: ring-pop 260ms steps(3, end) both;
 }
 
+/* Ring section markers: the category icon. With a mouse it only shows while its section is lit
+   (hover, focus, open); touch screens can't hover, so there it always shows, with a "+" badge. */
+@media (hover: hover) and (pointer: fine) {
+  .ring-marker:not([data-lit]) {
+    opacity: 0;
+  }
+  .ring-marker[data-lit] {
+    animation: ring-pop 160ms steps(3, end) both;
+  }
+  .ring-marker-badge {
+    display: none;
+  }
+}
+
 /* Blinking text cursor */
 @keyframes blink {
   50% { opacity: 0; }
@@ -252,7 +266,8 @@ input[type="number"] {
   .star-twinkle,
   .cloud-drift,
   .blink,
-  .ring-cell {
+  .ring-cell,
+  .ring-marker[data-lit] {
     animation: none;
   }
 }

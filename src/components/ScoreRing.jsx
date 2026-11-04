@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import PixelIcon from "./PixelIcon";
+import { ICONS } from "../icons";
 
 // Pixelated donut chart split into four quadrants (one per HealthScore
 // category). Each quadrant lights up clockwise in proportion to its score.
@@ -6,7 +8,9 @@ import { useMemo, useState } from "react";
 // With onPick, each quadrant is also a button (clipped to its own arc) that
 // opens quick logging for that category. Hovering, focusing or opening one
 // lights its own cells (the dim track takes the category's color, the glow
-// grows), so the highlight stays on the pixel grid.
+// grows), so the highlight stays on the pixel grid. Each section is marked
+// with its category's pixel icon: on touch screens always, with a "+" badge
+// (an "x" while open); with a mouse only while lit, so the ring stays clean.
 
 const N = 46; // grid size in cells
 const C = (N - 1) / 2;
@@ -57,11 +61,39 @@ function arcPolygon(q, steps = 10) {
   return `polygon(${[...outer, ...inner].join(", ")})`;
 }
 const HIT_SHAPES = QUADRANT_ORDER.map((_, q) => arcPolygon(q));
-// where each quadrant's "+" sits: the middle of its arc, in the middle of the band
-const PLUS_SPOTS = QUADRANT_ORDER.map((_, q) => {
+// where each quadrant's marker sits: the middle of its arc, in the middle of the band
+const MARKER_SPOTS = QUADRANT_ORDER.map((_, q) => {
   const a = ((q * 90 + 45) * Math.PI) / 180, r = (HIT_OUTER + HIT_INNER) / 2;
   return { left: `${50 + r * Math.sin(a)}%`, top: `${50 - r * Math.cos(a)}%` };
 });
+
+// A pixel icon with a 1 px dark outline, so it reads over lit and unlit cells alike.
+const OUTLINE = "#0a1122";
+function outlined({ art, colors }) {
+  const w = Math.max(...art.map((row) => row.length)), h = art.length;
+  const solid = (x, y) => y >= 0 && y < h && x >= 0 && x < w && art[y][x] && art[y][x] !== "." && colors[art[y][x]];
+  const rows = [];
+  for (let y = -1; y <= h; y += 1) {
+    let row = "";
+    for (let x = -1; x <= w; x += 1) {
+      if (solid(x, y)) row += art[y][x];
+      else row += solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1) ? "#" : ".";
+    }
+    rows.push(row);
+  }
+  return { colors: { ...colors, "#": OUTLINE }, art: rows };
+}
+const MARKER_ICONS = {
+  workouts: outlined(ICONS.dumbbell),
+  sleep: outlined(ICONS.moon),
+  activity: outlined(ICONS.runner),
+  nutrition: outlined(ICONS.apple),
+};
+const BADGE_COLORS = { o: OUTLINE, w: "#e8edff" };
+const PLUS_BADGE = { colors: BADGE_COLORS, art: ["..ooo..", "..owo..", "ooowooo", "owwwwwo", "ooowooo", "..owo..", "..ooo.."] };
+const CLOSE_BADGE = { colors: BADGE_COLORS, art: ["oo...oo", "owo.owo", ".owowo.", "..owo..", ".owowo.", "owo.owo", "oo...oo"] };
+// icon width in % of the ring (one icon pixel is a quarter of a ring cell)
+const MARKER_WIDTH = `${(14 / 4 / N) * 100}%`;
 
 function ScoreRing({ scores, categories, children, className = "", onPick, picked }) {
   const [hovered, setHovered] = useState(null);
@@ -156,17 +188,17 @@ function ScoreRing({ scores, categories, children, className = "", onPick, picke
               onPointerLeave={() => setHovered(null)}
               onFocus={() => setHovered(layer.key)}
               onBlur={() => setHovered(null)}
-              className="group absolute inset-0 z-10 cursor-pointer outline-none"
+              className="absolute inset-0 z-10 cursor-pointer outline-none"
               style={{ clipPath: HIT_SHAPES[q] }}
             >
               <span
                 aria-hidden="true"
-                className="absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center border-2 text-xl leading-none transition-transform group-hover:scale-125 group-focus-visible:scale-125"
-                style={{ ...PLUS_SPOTS[q], borderColor: layer.color,
-                         color: lit(layer.key) ? "var(--color-night-950)" : layer.color,
-                         background: lit(layer.key) ? layer.color : "rgb(10 17 34 / 0.9)" }}
+                data-lit={lit(layer.key) || undefined}
+                className="ring-marker absolute -translate-x-1/2 -translate-y-1/2"
+                style={{ ...MARKER_SPOTS[q], width: MARKER_WIDTH }}
               >
-                {open ? "×" : "+"}
+                <PixelIcon icon={MARKER_ICONS[layer.key]} className="h-auto w-full" />
+                <PixelIcon icon={open ? CLOSE_BADGE : PLUS_BADGE} className="ring-marker-badge absolute -bottom-[18%] -right-[22%] h-auto w-1/2" />
               </span>
             </button>
           );
