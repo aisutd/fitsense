@@ -1,0 +1,1688 @@
+{
+ "generated_at": "2026-11-04T18:32:42+00:00",
+ "ranker_used": true,
+ "adaptation_model_used": false,
+ "user": {
+  "user_id": "sample-user",
+  "name": "Sam Sample",
+  "age": 29,
+  "points": 0,
+  "fitness_level": "intermediate",
+  "fitness_goal": "build_muscle",
+  "workout_location": "gym",
+  "workout_frequency": 4,
+  "equipment": [],
+  "workout_preferences": [
+   "strength"
+  ]
+ },
+ "weeks": [
+  {
+   "week": 1,
+   "story": "Week 1: built from the profile",
+   "profile": {
+    "user_id": "sample-user",
+    "name": "Sam Sample",
+    "age": 29,
+    "points": 0,
+    "fitness_level": "intermediate",
+    "fitness_goal": "build_muscle",
+    "workout_location": "gym",
+    "workout_frequency": 4,
+    "equipment": [],
+    "workout_preferences": [
+     "strength"
+    ]
+   },
+   "plan": {
+    "week_start": "2026-11-02",
+    "days": 4,
+    "items": [
+     {
+      "day": 1,
+      "group": "Core",
+      "name": "Cable Judo Flip",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 1,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 1,
+      "group": "Upper Body",
+      "name": "Alternating Cable Shoulder Press",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Core",
+      "name": "Cable Russian Twists",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Lower Body",
+      "name": "Hip Lift with Band",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Upper Body",
+      "name": "Alternating Floor Press",
+      "level": "beginner",
+      "equipment": "kettlebells",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Core",
+      "name": "Exercise Ball Pull-In",
+      "level": "beginner",
+      "equipment": "exercise ball",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Lower Body",
+      "name": "Physioball Hip Bridge",
+      "level": "beginner",
+      "equipment": "exercise ball",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Upper Body",
+      "name": "Anti-Gravity Press",
+      "level": "beginner",
+      "equipment": "barbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 4,
+      "group": "Core",
+      "name": "Cable Judo Flip",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 4,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 4,
+      "group": "Upper Body",
+      "name": "Alternating Cable Shoulder Press",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 6 reps"
+     }
+    ]
+   },
+   "changes": [],
+   "ranker_effect": [
+    {
+     "day": 1,
+     "group": "Core",
+     "rules_pick": "Ab Roller",
+     "ranker_pick": "Cable Judo Flip"
+    },
+    {
+     "day": 1,
+     "group": "Lower Body",
+     "rules_pick": "Alternating Hang Clean",
+     "ranker_pick": "Hip Extension with Bands"
+    },
+    {
+     "day": 1,
+     "group": "Upper Body",
+     "rules_pick": "Alternating Kettlebell Press",
+     "ranker_pick": "Alternating Cable Shoulder Press"
+    },
+    {
+     "day": 2,
+     "group": "Core",
+     "rules_pick": "Atlas Stone Trainer",
+     "ranker_pick": "Cable Russian Twists"
+    },
+    {
+     "day": 2,
+     "group": "Lower Body",
+     "rules_pick": "Barbell Full Squat",
+     "ranker_pick": "Hip Lift with Band"
+    },
+    {
+     "day": 2,
+     "group": "Upper Body",
+     "rules_pick": "Arnold Dumbbell Press",
+     "ranker_pick": "Alternating Floor Press"
+    },
+    {
+     "day": 3,
+     "group": "Core",
+     "rules_pick": "Axle Deadlift",
+     "ranker_pick": "Exercise Ball Pull-In"
+    },
+    {
+     "day": 3,
+     "group": "Lower Body",
+     "rules_pick": "Barbell Glute Bridge",
+     "ranker_pick": "Physioball Hip Bridge"
+    },
+    {
+     "day": 3,
+     "group": "Upper Body",
+     "rules_pick": "Around The Worlds",
+     "ranker_pick": "Anti-Gravity Press"
+    },
+    {
+     "day": 4,
+     "group": "Core",
+     "rules_pick": "Ab Roller",
+     "ranker_pick": "Cable Judo Flip"
+    },
+    {
+     "day": 4,
+     "group": "Lower Body",
+     "rules_pick": "Alternating Hang Clean",
+     "ranker_pick": "Hip Extension with Bands"
+    },
+    {
+     "day": 4,
+     "group": "Upper Body",
+     "rules_pick": "Alternating Kettlebell Press",
+     "ranker_pick": "Alternating Cable Shoulder Press"
+    }
+   ],
+   "logged": [
+    {
+     "day_number": 1,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 2,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 3,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 4,
+     "completion_status": "completed"
+    }
+   ],
+   "completion": 1.0,
+   "decision": "progress",
+   "days_next": 4,
+   "profile_change": {},
+   "adaptation": {
+    "decision": "progress",
+    "days": 4,
+    "rule": "progress",
+    "original_rule": "progress",
+    "source": "rules",
+    "probabilities": null,
+    "completion": 1.0,
+    "equipment_skips": [],
+    "swapped": []
+   },
+   "result_story": "Week 1: completes every day",
+   "forecast": {
+    "as_of": "2026-11-10",
+    "workouts_per_week": {
+     "level": 4.0,
+     "slope": 0.0,
+     "weeks_of_data": 1,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 4
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-11-15",
+       "weeks_ahead": 1,
+       "value": 4.0
+      },
+      {
+       "date": "2026-12-06",
+       "weeks_ahead": 4,
+       "value": 4.0
+      },
+      {
+       "date": "2027-01-31",
+       "weeks_ahead": 12,
+       "value": 4.0
+      }
+     ],
+     "uses_xgboost": false
+    },
+    "weight_kg": {
+     "level": 75.0,
+     "slope": 0.087,
+     "weeks_of_data": 1,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 75.0
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-11-15",
+       "weeks_ahead": 1,
+       "value": 75.09
+      },
+      {
+       "date": "2026-12-06",
+       "weeks_ahead": 4,
+       "value": 75.35
+      },
+      {
+       "date": "2027-01-31",
+       "weeks_ahead": 12,
+       "value": 76.04
+      }
+     ],
+     "uses_xgboost": false
+    }
+   }
+  },
+  {
+   "week": 2,
+   "story": "Week 2: adapted from week 1",
+   "profile": {
+    "user_id": "sample-user",
+    "name": "Sam Sample",
+    "age": 29,
+    "points": 0,
+    "fitness_level": "intermediate",
+    "fitness_goal": "build_muscle",
+    "workout_location": "gym",
+    "workout_frequency": 4,
+    "equipment": [],
+    "workout_preferences": [
+     "strength"
+    ]
+   },
+   "plan": {
+    "week_start": "2026-11-09",
+    "days": 4,
+    "items": [
+     {
+      "day": 1,
+      "group": "Core",
+      "name": "Cable Judo Flip",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 1,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 1,
+      "group": "Upper Body",
+      "name": "Alternating Cable Shoulder Press",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 2,
+      "group": "Core",
+      "name": "Cable Russian Twists",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 2,
+      "group": "Lower Body",
+      "name": "Hip Lift with Band",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 2,
+      "group": "Upper Body",
+      "name": "Alternating Floor Press",
+      "level": "beginner",
+      "equipment": "kettlebells",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 3,
+      "group": "Core",
+      "name": "Exercise Ball Pull-In",
+      "level": "beginner",
+      "equipment": "exercise ball",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 3,
+      "group": "Lower Body",
+      "name": "Physioball Hip Bridge",
+      "level": "beginner",
+      "equipment": "exercise ball",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 3,
+      "group": "Upper Body",
+      "name": "Anti-Gravity Press",
+      "level": "beginner",
+      "equipment": "barbell",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 4,
+      "group": "Core",
+      "name": "Cable Judo Flip",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 4,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 4,
+      "group": "Upper Body",
+      "name": "Alternating Cable Shoulder Press",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 8 reps"
+     }
+    ]
+   },
+   "changes": [
+    "Day 1 [Core] Cable Judo Flip: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 1 [Lower Body] Hip Extension with Bands: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 1 [Upper Body] Alternating Cable Shoulder Press: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 2 [Core] Cable Russian Twists: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 2 [Lower Body] Hip Lift with Band: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 2 [Upper Body] Alternating Floor Press: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 3 [Core] Exercise Ball Pull-In: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 3 [Lower Body] Physioball Hip Bridge: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 3 [Upper Body] Anti-Gravity Press: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 4 [Core] Cable Judo Flip: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 4 [Lower Body] Hip Extension with Bands: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 4 [Upper Body] Alternating Cable Shoulder Press: 3 sets x 6 reps -> 3 sets x 8 reps"
+   ],
+   "ranker_effect": [],
+   "logged": [
+    {
+     "day_number": 1,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 2,
+     "completion_status": "skipped"
+    },
+    {
+     "day_number": 3,
+     "completion_status": "partial"
+    },
+    {
+     "day_number": 4,
+     "completion_status": "completed"
+    }
+   ],
+   "completion": 0.625,
+   "decision": "same dose",
+   "days_next": 4,
+   "profile_change": {},
+   "adaptation": {
+    "decision": "same dose",
+    "days": 4,
+    "rule": "same dose",
+    "original_rule": "same dose",
+    "source": "rules",
+    "probabilities": null,
+    "completion": 0.625,
+    "equipment_skips": [],
+    "swapped": []
+   },
+   "result_story": "Week 2: misses a day and only half-finishes another",
+   "forecast": {
+    "as_of": "2026-11-17",
+    "workouts_per_week": {
+     "level": 2.84,
+     "slope": -0.167,
+     "weeks_of_data": 2,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 4
+      },
+      {
+       "week": "2026-11-09",
+       "value": 2
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-11-22",
+       "weeks_ahead": 1,
+       "value": 2.67
+      },
+      {
+       "date": "2026-12-13",
+       "weeks_ahead": 4,
+       "value": 2.17
+      },
+      {
+       "date": "2027-02-07",
+       "weeks_ahead": 12,
+       "value": 0.83
+      }
+     ],
+     "uses_xgboost": false
+    },
+    "weight_kg": {
+     "level": 75.06,
+     "slope": 0.058,
+     "weeks_of_data": 1,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 75.0
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-11-22",
+       "weeks_ahead": 1,
+       "value": 75.12
+      },
+      {
+       "date": "2026-12-13",
+       "weeks_ahead": 4,
+       "value": 75.29
+      },
+      {
+       "date": "2027-02-07",
+       "weeks_ahead": 12,
+       "value": 75.75
+      }
+     ],
+     "uses_xgboost": false
+    }
+   }
+  },
+  {
+   "week": 3,
+   "story": "Week 3: adapted from week 2",
+   "profile": {
+    "user_id": "sample-user",
+    "name": "Sam Sample",
+    "age": 29,
+    "points": 0,
+    "fitness_level": "intermediate",
+    "fitness_goal": "build_muscle",
+    "workout_location": "gym",
+    "workout_frequency": 4,
+    "equipment": [],
+    "workout_preferences": [
+     "strength"
+    ]
+   },
+   "plan": {
+    "week_start": "2026-11-16",
+    "days": 4,
+    "items": [
+     {
+      "day": 1,
+      "group": "Core",
+      "name": "Cable Judo Flip",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 1,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 1,
+      "group": "Upper Body",
+      "name": "Alternating Cable Shoulder Press",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 2,
+      "group": "Core",
+      "name": "Landmine 180's",
+      "level": "beginner",
+      "equipment": "barbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Lower Body",
+      "name": "Pull Through",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Upper Body",
+      "name": "Back Flyes - With Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Core",
+      "name": "Exercise Ball Pull-In",
+      "level": "beginner",
+      "equipment": "exercise ball",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Lower Body",
+      "name": "Physioball Hip Bridge",
+      "level": "beginner",
+      "equipment": "exercise ball",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Upper Body",
+      "name": "Anti-Gravity Press",
+      "level": "beginner",
+      "equipment": "barbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 4,
+      "group": "Core",
+      "name": "Cable Judo Flip",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 4,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 4,
+      "group": "Upper Body",
+      "name": "Alternating Cable Shoulder Press",
+      "level": "beginner",
+      "equipment": "cable",
+      "dose": "3 sets x 8 reps"
+     }
+    ]
+   },
+   "changes": [
+    "Day 2 [Core] swapped: Cable Russian Twists (3 sets x 8 reps) -> Landmine 180's (3 sets x 6 reps)",
+    "Day 2 [Lower Body] swapped: Hip Lift with Band (3 sets x 8 reps) -> Pull Through (3 sets x 6 reps)",
+    "Day 2 [Upper Body] swapped: Alternating Floor Press (3 sets x 8 reps) -> Back Flyes - With Bands (3 sets x 6 reps)",
+    "Day 3 [Core] Exercise Ball Pull-In: 3 sets x 8 reps -> 3 sets x 6 reps",
+    "Day 3 [Lower Body] Physioball Hip Bridge: 3 sets x 8 reps -> 3 sets x 6 reps",
+    "Day 3 [Upper Body] Anti-Gravity Press: 3 sets x 8 reps -> 3 sets x 6 reps"
+   ],
+   "ranker_effect": [
+    {
+     "day": 2,
+     "group": "Core",
+     "rules_pick": "Ab Roller",
+     "ranker_pick": "Landmine 180's"
+    },
+    {
+     "day": 2,
+     "group": "Lower Body",
+     "rules_pick": "Alternating Hang Clean",
+     "ranker_pick": "Pull Through"
+    },
+    {
+     "day": 2,
+     "group": "Upper Body",
+     "rules_pick": "Alternating Kettlebell Press",
+     "ranker_pick": "Back Flyes - With Bands"
+    }
+   ],
+   "logged": [
+    {
+     "day_number": 1,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 2,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 3,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 4,
+     "completion_status": "completed"
+    }
+   ],
+   "completion": 1.0,
+   "decision": "progress",
+   "days_next": 4,
+   "profile_change": {
+    "workout_location": "home",
+    "equipment": [
+     "dumbbell",
+     "bands"
+    ]
+   },
+   "adaptation": {
+    "decision": "progress",
+    "days": 4,
+    "rule": "progress",
+    "original_rule": "progress",
+    "source": "rules",
+    "probabilities": null,
+    "completion": 1.0,
+    "equipment_skips": [],
+    "swapped": []
+   },
+   "result_story": "Week 3: completes every day, then moves to training at home with dumbbells and bands",
+   "forecast": {
+    "as_of": "2026-11-24",
+    "workouts_per_week": {
+     "level": 3.37,
+     "slope": 0.029,
+     "weeks_of_data": 3,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 4
+      },
+      {
+       "week": "2026-11-09",
+       "value": 2
+      },
+      {
+       "week": "2026-11-16",
+       "value": 4
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-11-29",
+       "weeks_ahead": 1,
+       "value": 3.39
+      },
+      {
+       "date": "2026-12-20",
+       "weeks_ahead": 4,
+       "value": 3.48
+      },
+      {
+       "date": "2027-02-14",
+       "weeks_ahead": 12,
+       "value": 3.71
+      }
+     ],
+     "uses_xgboost": false
+    },
+    "weight_kg": {
+     "level": 75.15,
+     "slope": 0.073,
+     "weeks_of_data": 1,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 75.0
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-11-29",
+       "weeks_ahead": 1,
+       "value": 75.22
+      },
+      {
+       "date": "2026-12-20",
+       "weeks_ahead": 4,
+       "value": 75.44
+      },
+      {
+       "date": "2027-02-14",
+       "weeks_ahead": 12,
+       "value": 76.03
+      }
+     ],
+     "uses_xgboost": false
+    }
+   }
+  },
+  {
+   "week": 4,
+   "story": "Week 4: adapted from week 3",
+   "profile": {
+    "user_id": "sample-user",
+    "name": "Sam Sample",
+    "age": 29,
+    "points": 0,
+    "fitness_level": "intermediate",
+    "fitness_goal": "build_muscle",
+    "workout_location": "home",
+    "workout_frequency": 4,
+    "equipment": [
+     "dumbbell",
+     "bands"
+    ],
+    "workout_preferences": [
+     "strength"
+    ]
+   },
+   "plan": {
+    "week_start": "2026-11-23",
+    "days": 4,
+    "items": [
+     {
+      "day": 1,
+      "group": "Core",
+      "name": "Spell Caster",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 1,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 10 reps"
+     },
+     {
+      "day": 1,
+      "group": "Upper Body",
+      "name": "Back Flyes - With Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 2,
+      "group": "Core",
+      "name": "Dumbbell Side Bend",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Lower Body",
+      "name": "Hip Lift with Band",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Upper Body",
+      "name": "Bench Press - With Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Core",
+      "name": "3/4 Sit-Up",
+      "level": "beginner",
+      "equipment": "body only",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Lower Body",
+      "name": "Band Good Morning",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Upper Body",
+      "name": "Bent Over Two-Dumbbell Row",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 4,
+      "group": "Core",
+      "name": "Spell Caster",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 4,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 10 reps"
+     },
+     {
+      "day": 4,
+      "group": "Upper Body",
+      "name": "Back Flyes - With Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     }
+    ]
+   },
+   "changes": [
+    "Day 1 [Core] swapped: Cable Judo Flip (3 sets x 8 reps) -> Spell Caster (3 sets x 6 reps)",
+    "Day 1 [Lower Body] Hip Extension with Bands: 3 sets x 8 reps -> 3 sets x 10 reps",
+    "Day 1 [Upper Body] swapped: Alternating Cable Shoulder Press (3 sets x 8 reps) -> Back Flyes - With Bands (3 sets x 8 reps)",
+    "Day 2 [Core] swapped: Landmine 180's (3 sets x 6 reps) -> Dumbbell Side Bend (3 sets x 6 reps)",
+    "Day 2 [Lower Body] swapped: Pull Through (3 sets x 6 reps) -> Hip Lift with Band (3 sets x 6 reps)",
+    "Day 2 [Upper Body] swapped: Back Flyes - With Bands (3 sets x 6 reps) -> Bench Press - With Bands (3 sets x 6 reps)",
+    "Day 3 [Core] swapped: Exercise Ball Pull-In (3 sets x 6 reps) -> 3/4 Sit-Up (3 sets x 6 reps)",
+    "Day 3 [Lower Body] swapped: Physioball Hip Bridge (3 sets x 6 reps) -> Band Good Morning (3 sets x 6 reps)",
+    "Day 3 [Upper Body] swapped: Anti-Gravity Press (3 sets x 6 reps) -> Bent Over Two-Dumbbell Row (3 sets x 6 reps)",
+    "Day 4 [Core] swapped: Cable Judo Flip (3 sets x 8 reps) -> Spell Caster (3 sets x 6 reps)",
+    "Day 4 [Lower Body] Hip Extension with Bands: 3 sets x 8 reps -> 3 sets x 10 reps",
+    "Day 4 [Upper Body] swapped: Alternating Cable Shoulder Press (3 sets x 8 reps) -> Back Flyes - With Bands (3 sets x 8 reps)"
+   ],
+   "ranker_effect": [
+    {
+     "day": 1,
+     "group": "Core",
+     "rules_pick": "Gorilla Chin/Crunch",
+     "ranker_pick": "Spell Caster"
+    },
+    {
+     "day": 2,
+     "group": "Core",
+     "rules_pick": "Hyperextensions With No Hyperextension Bench",
+     "ranker_pick": "Dumbbell Side Bend"
+    },
+    {
+     "day": 2,
+     "group": "Lower Body",
+     "rules_pick": "Dumbbell Clean",
+     "ranker_pick": "Hip Lift with Band"
+    },
+    {
+     "day": 2,
+     "group": "Upper Body",
+     "rules_pick": "Arnold Dumbbell Press",
+     "ranker_pick": "Bench Press - With Bands"
+    },
+    {
+     "day": 3,
+     "group": "Core",
+     "rules_pick": "Russian Twist",
+     "ranker_pick": "3/4 Sit-Up"
+    },
+    {
+     "day": 3,
+     "group": "Lower Body",
+     "rules_pick": "Dumbbell Rear Lunge",
+     "ranker_pick": "Band Good Morning"
+    },
+    {
+     "day": 3,
+     "group": "Upper Body",
+     "rules_pick": "Around The Worlds",
+     "ranker_pick": "Bent Over Two-Dumbbell Row"
+    },
+    {
+     "day": 4,
+     "group": "Core",
+     "rules_pick": "Gorilla Chin/Crunch",
+     "ranker_pick": "Spell Caster"
+    }
+   ],
+   "logged": [
+    {
+     "day_number": 1,
+     "completion_status": "skipped"
+    },
+    {
+     "day_number": 2,
+     "completion_status": "skipped"
+    },
+    {
+     "day_number": 3,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 4,
+     "completion_status": "skipped"
+    }
+   ],
+   "completion": 0.25,
+   "decision": "reduce",
+   "days_next": 2,
+   "profile_change": {
+    "workout_frequency": 3
+   },
+   "adaptation": {
+    "decision": "reduce",
+    "days": 2,
+    "rule": "reduce",
+    "original_rule": "reduce",
+    "source": "rules",
+    "probabilities": null,
+    "completion": 0.25,
+    "equipment_skips": [],
+    "swapped": []
+   },
+   "result_story": "Week 4: busy week (1 of 4 days), and lowers workout days to 3",
+   "forecast": {
+    "as_of": "2026-12-01",
+    "workouts_per_week": {
+     "level": 2.18,
+     "slope": -0.322,
+     "weeks_of_data": 4,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 4
+      },
+      {
+       "week": "2026-11-09",
+       "value": 2
+      },
+      {
+       "week": "2026-11-16",
+       "value": 4
+      },
+      {
+       "week": "2026-11-23",
+       "value": 1
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-12-06",
+       "weeks_ahead": 1,
+       "value": 1.86
+      },
+      {
+       "date": "2026-12-27",
+       "weeks_ahead": 4,
+       "value": 0.89
+      },
+      {
+       "date": "2027-02-21",
+       "weeks_ahead": 12,
+       "value": 0.0
+      }
+     ],
+     "uses_xgboost": false
+    },
+    "weight_kg": {
+     "level": 75.24,
+     "slope": 0.08,
+     "weeks_of_data": 1,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 75.0
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-12-06",
+       "weeks_ahead": 1,
+       "value": 75.32
+      },
+      {
+       "date": "2026-12-27",
+       "weeks_ahead": 4,
+       "value": 75.56
+      },
+      {
+       "date": "2027-02-21",
+       "weeks_ahead": 12,
+       "value": 76.21
+      }
+     ],
+     "uses_xgboost": false
+    }
+   }
+  },
+  {
+   "week": 5,
+   "story": "Week 5: adapted from week 4",
+   "profile": {
+    "user_id": "sample-user",
+    "name": "Sam Sample",
+    "age": 29,
+    "points": 0,
+    "fitness_level": "intermediate",
+    "fitness_goal": "build_muscle",
+    "workout_location": "home",
+    "workout_frequency": 3,
+    "equipment": [
+     "dumbbell",
+     "bands"
+    ],
+    "workout_preferences": [
+     "strength"
+    ]
+   },
+   "plan": {
+    "week_start": "2026-11-30",
+    "days": 2,
+    "items": [
+     {
+      "day": 1,
+      "group": "Core",
+      "name": "Air Bike",
+      "level": "beginner",
+      "equipment": "body only",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 1,
+      "group": "Lower Body",
+      "name": "Band Good Morning (Pull Through)",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 1,
+      "group": "Upper Body",
+      "name": "Bent Over Two-Dumbbell Row With Palms In",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Core",
+      "name": "Bent-Knee Hip Raise",
+      "level": "beginner",
+      "equipment": "body only",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Lower Body",
+      "name": "Dumbbell Lunges",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 2,
+      "group": "Upper Body",
+      "name": "Close-Grip Dumbbell Press",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 6 reps"
+     }
+    ]
+   },
+   "changes": [
+    "Days: 4 -> 2",
+    "Day 1 [Core] swapped: Spell Caster (3 sets x 6 reps) -> Air Bike (3 sets x 6 reps)",
+    "Day 1 [Lower Body] swapped: Hip Extension with Bands (3 sets x 10 reps) -> Band Good Morning (Pull Through) (3 sets x 6 reps)",
+    "Day 1 [Upper Body] swapped: Back Flyes - With Bands (3 sets x 8 reps) -> Bent Over Two-Dumbbell Row With Palms In (3 sets x 6 reps)",
+    "Day 2 [Core] swapped: Dumbbell Side Bend (3 sets x 6 reps) -> Bent-Knee Hip Raise (3 sets x 6 reps)",
+    "Day 2 [Lower Body] swapped: Hip Lift with Band (3 sets x 6 reps) -> Dumbbell Lunges (3 sets x 6 reps)",
+    "Day 2 [Upper Body] swapped: Bench Press - With Bands (3 sets x 6 reps) -> Close-Grip Dumbbell Press (3 sets x 6 reps)",
+    "Day 3 [Core] removed: 3/4 Sit-Up (3 sets x 6 reps)",
+    "Day 3 [Lower Body] removed: Band Good Morning (3 sets x 6 reps)",
+    "Day 3 [Upper Body] removed: Bent Over Two-Dumbbell Row (3 sets x 6 reps)",
+    "Day 4 [Core] removed: Spell Caster (3 sets x 6 reps)",
+    "Day 4 [Lower Body] removed: Hip Extension with Bands (3 sets x 10 reps)",
+    "Day 4 [Upper Body] removed: Back Flyes - With Bands (3 sets x 8 reps)"
+   ],
+   "ranker_effect": [
+    {
+     "day": 1,
+     "group": "Core",
+     "rules_pick": "Gorilla Chin/Crunch",
+     "ranker_pick": "Air Bike"
+    },
+    {
+     "day": 1,
+     "group": "Lower Body",
+     "rules_pick": "Dumbbell Clean",
+     "ranker_pick": "Band Good Morning (Pull Through)"
+    },
+    {
+     "day": 1,
+     "group": "Upper Body",
+     "rules_pick": "Arnold Dumbbell Press",
+     "ranker_pick": "Bent Over Two-Dumbbell Row With Palms In"
+    },
+    {
+     "day": 2,
+     "group": "Core",
+     "rules_pick": "Hyperextensions With No Hyperextension Bench",
+     "ranker_pick": "Bent-Knee Hip Raise"
+    },
+    {
+     "day": 2,
+     "group": "Lower Body",
+     "rules_pick": "Dumbbell Rear Lunge",
+     "ranker_pick": "Dumbbell Lunges"
+    },
+    {
+     "day": 2,
+     "group": "Upper Body",
+     "rules_pick": "Around The Worlds",
+     "ranker_pick": "Close-Grip Dumbbell Press"
+    }
+   ],
+   "logged": [
+    {
+     "day_number": 1,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 2,
+     "completion_status": "completed"
+    }
+   ],
+   "completion": 1.0,
+   "decision": "progress",
+   "days_next": 3,
+   "profile_change": {},
+   "adaptation": {
+    "decision": "progress",
+    "days": 3,
+    "rule": "progress",
+    "original_rule": "progress",
+    "source": "rules",
+    "probabilities": null,
+    "completion": 1.0,
+    "equipment_skips": [],
+    "swapped": []
+   },
+   "result_story": "Week 5: completes both planned days",
+   "forecast": {
+    "as_of": "2026-12-08",
+    "workouts_per_week": {
+     "level": 1.97,
+     "slope": -0.281,
+     "weeks_of_data": 5,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 4
+      },
+      {
+       "week": "2026-11-09",
+       "value": 2
+      },
+      {
+       "week": "2026-11-16",
+       "value": 4
+      },
+      {
+       "week": "2026-11-23",
+       "value": 1
+      },
+      {
+       "week": "2026-11-30",
+       "value": 2
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-12-13",
+       "weeks_ahead": 1,
+       "value": 1.68
+      },
+      {
+       "date": "2027-01-03",
+       "weeks_ahead": 4,
+       "value": 0.84
+      },
+      {
+       "date": "2027-02-28",
+       "weeks_ahead": 12,
+       "value": 0.0
+      }
+     ],
+     "uses_xgboost": false
+    },
+    "weight_kg": {
+     "level": 75.19,
+     "slope": 0.049,
+     "weeks_of_data": 1,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 75.0
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-12-13",
+       "weeks_ahead": 1,
+       "value": 75.24
+      },
+      {
+       "date": "2027-01-03",
+       "weeks_ahead": 4,
+       "value": 75.39
+      },
+      {
+       "date": "2027-02-28",
+       "weeks_ahead": 12,
+       "value": 75.78
+      }
+     ],
+     "uses_xgboost": false
+    }
+   }
+  },
+  {
+   "week": 6,
+   "story": "Week 6: adapted from week 5",
+   "profile": {
+    "user_id": "sample-user",
+    "name": "Sam Sample",
+    "age": 29,
+    "points": 0,
+    "fitness_level": "intermediate",
+    "fitness_goal": "build_muscle",
+    "workout_location": "home",
+    "workout_frequency": 3,
+    "equipment": [
+     "dumbbell",
+     "bands"
+    ],
+    "workout_preferences": [
+     "strength"
+    ]
+   },
+   "plan": {
+    "week_start": "2026-12-07",
+    "days": 3,
+    "items": [
+     {
+      "day": 1,
+      "group": "Core",
+      "name": "Air Bike",
+      "level": "beginner",
+      "equipment": "body only",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 1,
+      "group": "Lower Body",
+      "name": "Band Good Morning (Pull Through)",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 1,
+      "group": "Upper Body",
+      "name": "Bent Over Two-Dumbbell Row With Palms In",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 2,
+      "group": "Core",
+      "name": "Bent-Knee Hip Raise",
+      "level": "beginner",
+      "equipment": "body only",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 2,
+      "group": "Lower Body",
+      "name": "Dumbbell Lunges",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 2,
+      "group": "Upper Body",
+      "name": "Close-Grip Dumbbell Press",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 3,
+      "group": "Core",
+      "name": "Spell Caster",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     },
+     {
+      "day": 3,
+      "group": "Upper Body",
+      "name": "Back Flyes - With Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 6 reps"
+     }
+    ]
+   },
+   "changes": [
+    "Days: 2 -> 3",
+    "Day 1 [Core] Air Bike: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 1 [Lower Body] Band Good Morning (Pull Through): 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 1 [Upper Body] Bent Over Two-Dumbbell Row With Palms In: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 2 [Core] Bent-Knee Hip Raise: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 2 [Lower Body] Dumbbell Lunges: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 2 [Upper Body] Close-Grip Dumbbell Press: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 3 [Core] added: Spell Caster (3 sets x 6 reps)",
+    "Day 3 [Lower Body] added: Hip Extension with Bands (3 sets x 6 reps)",
+    "Day 3 [Upper Body] added: Back Flyes - With Bands (3 sets x 6 reps)"
+   ],
+   "ranker_effect": [
+    {
+     "day": 3,
+     "group": "Core",
+     "rules_pick": "Gorilla Chin/Crunch",
+     "ranker_pick": "Spell Caster"
+    },
+    {
+     "day": 3,
+     "group": "Lower Body",
+     "rules_pick": "Dumbbell Clean",
+     "ranker_pick": "Hip Extension with Bands"
+    },
+    {
+     "day": 3,
+     "group": "Upper Body",
+     "rules_pick": "Arnold Dumbbell Press",
+     "ranker_pick": "Back Flyes - With Bands"
+    }
+   ],
+   "logged": [
+    {
+     "day_number": 1,
+     "completion_status": "completed"
+    },
+    {
+     "day_number": 2,
+     "completion_status": "completed",
+     "swapped": true
+    },
+    {
+     "day_number": 3,
+     "completion_status": "skipped",
+     "skip_reason": "no_equipment"
+    }
+   ],
+   "completion": 1.0,
+   "decision": "progress",
+   "days_next": 3,
+   "profile_change": {},
+   "adaptation": {
+    "decision": "progress",
+    "days": 3,
+    "rule": "progress",
+    "original_rule": "same dose",
+    "source": "rules",
+    "probabilities": null,
+    "completion": 1.0,
+    "equipment_skips": [
+     3
+    ],
+    "swapped": [
+     2
+    ]
+   },
+   "result_story": "Week 6: swaps one day for missing equipment, and skips another because the gym was closed",
+   "forecast": {
+    "as_of": "2026-12-15",
+    "workouts_per_week": {
+     "level": 1.87,
+     "slope": -0.229,
+     "weeks_of_data": 6,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 4
+      },
+      {
+       "week": "2026-11-09",
+       "value": 2
+      },
+      {
+       "week": "2026-11-16",
+       "value": 4
+      },
+      {
+       "week": "2026-11-23",
+       "value": 1
+      },
+      {
+       "week": "2026-11-30",
+       "value": 2
+      },
+      {
+       "week": "2026-12-07",
+       "value": 2
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-12-20",
+       "weeks_ahead": 1,
+       "value": 1.64
+      },
+      {
+       "date": "2027-01-10",
+       "weeks_ahead": 4,
+       "value": 0.95
+      },
+      {
+       "date": "2027-03-07",
+       "weeks_ahead": 12,
+       "value": 0.0
+      }
+     ],
+     "uses_xgboost": false
+    },
+    "weight_kg": {
+     "level": 75.24,
+     "slope": 0.047,
+     "weeks_of_data": 1,
+     "history": [
+      {
+       "week": "2026-11-02",
+       "value": 75.0
+      }
+     ],
+     "predictions": [
+      {
+       "date": "2026-12-20",
+       "weeks_ahead": 1,
+       "value": 75.28
+      },
+      {
+       "date": "2027-01-10",
+       "weeks_ahead": 4,
+       "value": 75.43
+      },
+      {
+       "date": "2027-03-07",
+       "weeks_ahead": 12,
+       "value": 75.8
+      }
+     ],
+     "uses_xgboost": false
+    }
+   }
+  },
+  {
+   "week": 7,
+   "story": "Week 7: adapted from week 6",
+   "profile": {
+    "user_id": "sample-user",
+    "name": "Sam Sample",
+    "age": 29,
+    "points": 0,
+    "fitness_level": "intermediate",
+    "fitness_goal": "build_muscle",
+    "workout_location": "home",
+    "workout_frequency": 3,
+    "equipment": [
+     "dumbbell",
+     "bands"
+    ],
+    "workout_preferences": [
+     "strength"
+    ]
+   },
+   "plan": {
+    "week_start": "2026-12-14",
+    "days": 3,
+    "items": [
+     {
+      "day": 1,
+      "group": "Core",
+      "name": "Air Bike",
+      "level": "beginner",
+      "equipment": "body only",
+      "dose": "3 sets x 10 reps"
+     },
+     {
+      "day": 1,
+      "group": "Lower Body",
+      "name": "Band Good Morning (Pull Through)",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 10 reps"
+     },
+     {
+      "day": 1,
+      "group": "Upper Body",
+      "name": "Bent Over Two-Dumbbell Row With Palms In",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 10 reps"
+     },
+     {
+      "day": 2,
+      "group": "Core",
+      "name": "Bent-Knee Hip Raise",
+      "level": "beginner",
+      "equipment": "body only",
+      "dose": "3 sets x 10 reps"
+     },
+     {
+      "day": 2,
+      "group": "Lower Body",
+      "name": "Dumbbell Lunges",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 10 reps"
+     },
+     {
+      "day": 2,
+      "group": "Upper Body",
+      "name": "Close-Grip Dumbbell Press",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 10 reps"
+     },
+     {
+      "day": 3,
+      "group": "Core",
+      "name": "Spell Caster",
+      "level": "beginner",
+      "equipment": "dumbbell",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 3,
+      "group": "Lower Body",
+      "name": "Hip Extension with Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     },
+     {
+      "day": 3,
+      "group": "Upper Body",
+      "name": "Back Flyes - With Bands",
+      "level": "beginner",
+      "equipment": "bands",
+      "dose": "3 sets x 8 reps"
+     }
+    ]
+   },
+   "changes": [
+    "Day 1 [Core] Air Bike: 3 sets x 8 reps -> 3 sets x 10 reps",
+    "Day 1 [Lower Body] Band Good Morning (Pull Through): 3 sets x 8 reps -> 3 sets x 10 reps",
+    "Day 1 [Upper Body] Bent Over Two-Dumbbell Row With Palms In: 3 sets x 8 reps -> 3 sets x 10 reps",
+    "Day 2 [Core] Bent-Knee Hip Raise: 3 sets x 8 reps -> 3 sets x 10 reps",
+    "Day 2 [Lower Body] Dumbbell Lunges: 3 sets x 8 reps -> 3 sets x 10 reps",
+    "Day 2 [Upper Body] Close-Grip Dumbbell Press: 3 sets x 8 reps -> 3 sets x 10 reps",
+    "Day 3 [Core] Spell Caster: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 3 [Lower Body] Hip Extension with Bands: 3 sets x 6 reps -> 3 sets x 8 reps",
+    "Day 3 [Upper Body] Back Flyes - With Bands: 3 sets x 6 reps -> 3 sets x 8 reps"
+   ],
+   "ranker_effect": []
+  }
+ ]
+}

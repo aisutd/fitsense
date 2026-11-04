@@ -40,6 +40,8 @@ export const saveProfile = (userId, profile) => request("PUT", `/profiles/${user
 export const getProfile = (userId) => request("GET", `/profiles/${userId}`);
 export const getHealthScore = (userId, range) =>
   request("GET", `/healthscore/${userId}?range=${encodeURIComponent(range)}&end_date=${localToday()}`);
+// Where the HealthScore is heading, plus what-if scenarios by workouts completed per week.
+export const getHealthForecast = (userId) => request("GET", `/forecast/${userId}/healthscore?end_date=${localToday()}`);
 
 // Logging: each one feeds a HealthScore category.
 export const logWorkout = (userId, workoutDate, completionStatus, durationMinutes) =>

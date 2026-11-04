@@ -5,7 +5,10 @@
   "main": "vite.config.js",
   "type": "module",
   "scripts": {
+    "sample-data": ".venv/bin/python export_sample_user.py || echo 'Sample player data not refreshed: see the message above (the app still runs).'",
+    "predev": "npm run sample-data",
     "dev": "vite",
+    "prebuild": "npm run sample-data",
     "build": "vite build",
     "preview": "vite preview"
   },

@@ -5,6 +5,8 @@ import PixelCard from "../components/reactbits/PixelCard";
 import PixelIcon from "../components/PixelIcon";
 import ScoreRing from "../components/ScoreRing";
 import LogPanel from "../components/LogPanel";
+import SampleUserForecast from "../components/SampleUserForecast";
+import HealthForecast from "../components/HealthForecast";
 import { Logo } from "../ScreenLayout";
 import { ICONS, levelIcon } from "../icons";
 import { CATEGORIES, RANGES, scoreLabel, toViewModel } from "../data/healthScore";
@@ -302,6 +304,9 @@ function HealthScore({ userId, profile, onEditProfile, onLogout }) {
 
       <SummaryBar scores={scores} />
       <LogPanel userId={userId} onLogged={retry} />
+      {/* refreshToken: a new log reloads the HealthScore (data), which reloads the forecast */}
+      <HealthForecast userId={userId} refreshToken={data} />
+      <SampleUserForecast />
       <PlayerProfile profile={profile} onEdit={onEditProfile} />
 
       {data.disclaimer && <p className="mt-10 text-center text-sm text-muted">{data.disclaimer}</p>}
