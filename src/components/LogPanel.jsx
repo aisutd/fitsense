@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PixelIcon from "./PixelIcon";
 import { ICONS } from "../icons";
 import MealLogger from "./MealLogger";
 import { shiftDay } from "./DateSwitcher";
 import { localToday, logActivity, logMeal, logSleep, logWorkout, validationMessage } from "../api";
+import { celebrate } from "../rewards";
 
 // Quick logging on the HealthScore page. Each tab feeds one category; after a
 // successful log the page refreshes the score.
@@ -38,7 +39,8 @@ function Field({ label, suffix, ...props }) {
 const num = (v) => (v === "" ? NaN : Number(v));
 
 // Logs go to the day the HealthScore is showing (viewedDate); sleep defaults to the night before it.
-function LogPanel({ userId, date: viewedDate, onLogged }) {
+// request ({ tab }) opens a tab and scrolls here, e.g. from the ring's quick log.
+function LogPanel({ userId, date: viewedDate, onLogged, request }) {
   const today = localToday();
   const day = viewedDate ?? today;
   const [tab, setTab] = useState("workout");
@@ -51,6 +53,15 @@ function LogPanel({ userId, date: viewedDate, onLogged }) {
   const [meal, setMeal] = useState({ meal_type: "lunch", display_name: "", calories: "", protein_g: "", carbs_g: "", fat_g: "" });
   const [busy, setBusy] = useState(false);
   const [manualMeal, setManualMeal] = useState(false);
+  const [mealKey, setMealKey] = useState(0);
+  const section = useRef(null);
+  useEffect(() => {
+    if (!request) return;
+    setTab(request.tab);
+    setManualMeal(false);
+    setMealKey((k) => k + 1); // remount the meal logger so it picks up a meal started in the quick log
+    section.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [request]);
   const [message, setMessage] = useState(null); // { ok, text }
 
   const active = TABS.find((t) => t.id === tab);
@@ -66,6 +77,7 @@ function LogPanel({ userId, date: viewedDate, onLogged }) {
   async function submit(event) {
     event.preventDefault();
     if (!valid || busy) return;
+    const anchor = event.nativeEvent?.submitter ?? event.currentTarget;
     setBusy(true);
     setMessage(null);
     try {
@@ -92,6 +104,7 @@ function LogPanel({ userId, date: viewedDate, onLogged }) {
       const earned = reward?.fitcoins_awarded ? ` +${reward.fitcoins_awarded} FitCoins` : "";
       const badges = reward?.badges_earned?.length ? ` Badge unlocked: ${reward.badges_earned.map((badge) => badge.id.replaceAll("_", " ")).join(", ")}.` : "";
       setMessage({ ok: true, text: `${active.label} logged. HealthScore updated.${xp}${earned ? `${earned}!` : ""}${badges}` });
+      celebrate(result, anchor);
       onLogged();
     } catch (error) {
       setMessage({ ok: false, text: validationMessage(error, "Couldn't save that. Please try again.") });
@@ -101,7 +114,7 @@ function LogPanel({ userId, date: viewedDate, onLogged }) {
   }
 
   return (
-    <section className="px-frame mt-14 bg-night-800/85 p-6 sm:p-8" aria-labelledby="log-title">
+    <section ref={section} className="px-frame mt-14 scroll-mt-6 bg-night-800/85 p-6 sm:p-8" aria-labelledby="log-title">
       <h2 id="log-title" className="text-2xl font-bold">
         Log Progress
       </h2>
@@ -133,7 +146,7 @@ function LogPanel({ userId, date: viewedDate, onLogged }) {
       </div>
 
       {tab === "meal" && !manualMeal ? (
-        <MealLogger key={day} userId={userId} date={day} onLogged={onLogged} onManual={() => setManualMeal(true)} />
+        <MealLogger key={`${day}-${mealKey}`} userId={userId} date={day} onLogged={onLogged} onManual={() => setManualMeal(true)} />
       ) : (
       <form onSubmit={submit} className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <Field label={tab === "sleep" ? "Night of" : "Date"} type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} required />

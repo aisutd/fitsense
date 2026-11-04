@@ -3,6 +3,8 @@ import { useMemo } from "react";
 // Pixelated donut chart split into four quadrants (one per HealthScore
 // category). Each quadrant lights up clockwise in proportion to its score.
 // Lit cells pop in along the sweep, and each quadrant gets its own glow layer.
+// With onPick, each quadrant is also a button (clipped to its own arc) that
+// opens quick logging for that category.
 
 const N = 46; // grid size in cells
 const C = (N - 1) / 2;
@@ -36,7 +38,30 @@ function buildCells() {
 
 const CELLS = buildCells();
 
-function ScoreRing({ scores, categories, children, className = "" }) {
+// A quadrant's arc as a CSS polygon, in % of the ring's box (0 degrees at 12 o'clock, clockwise).
+const HIT_OUTER = 50;
+const HIT_INNER = 32;
+function arcPolygon(q, steps = 10) {
+  const point = (deg, r) => {
+    const a = (deg * Math.PI) / 180;
+    return `${(50 + r * Math.sin(a)).toFixed(2)}% ${(50 - r * Math.cos(a)).toFixed(2)}%`;
+  };
+  const from = q * 90, outer = [], inner = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const deg = from + (90 * i) / steps;
+    outer.push(point(deg, HIT_OUTER));
+    inner.unshift(point(deg, HIT_INNER));
+  }
+  return `polygon(${[...outer, ...inner].join(", ")})`;
+}
+const HIT_SHAPES = QUADRANT_ORDER.map((_, q) => arcPolygon(q));
+// where each quadrant's "+" sits: the middle of its arc, in the middle of the band
+const PLUS_SPOTS = QUADRANT_ORDER.map((_, q) => {
+  const a = ((q * 90 + 45) * Math.PI) / 180, r = (HIT_OUTER + HIT_INNER) / 2;
+  return { left: `${50 + r * Math.sin(a)}%`, top: `${50 - r * Math.cos(a)}%` };
+});
+
+function ScoreRing({ scores, categories, children, className = "", onPick, picked }) {
   const layers = useMemo(() => {
     const byKey = Object.fromEntries(categories.map((c) => [c.key, c]));
     return QUADRANT_ORDER.map((key, q) => {
@@ -98,7 +123,34 @@ function ScoreRing({ scores, categories, children, className = "" }) {
         className="absolute rounded-full bg-night-900/90"
         style={{ inset: `${((C - INNER + 2.5) / N) * 100}%`, boxShadow: "inset 0 0 0 4px #121b34, 0 0 40px #0008" }}
       />
-      <div className="absolute inset-0 flex items-center justify-center">{children}</div>
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">{children}</div>
+
+      {onPick &&
+        layers.map((layer, q) => {
+          const cat = categories.find((c) => c.key === layer.key);
+          const open = picked === layer.key;
+          return (
+            <button
+              key={layer.key}
+              type="button"
+              data-quadrant={layer.key}
+              aria-label={`Log ${cat.label.toLowerCase()}`}
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              onClick={(event) => onPick(open ? null : layer.key, event.currentTarget)}
+              className="ring-hit group absolute inset-0 z-10 cursor-pointer outline-none"
+              style={{ clipPath: HIT_SHAPES[q], "--hit": layer.color, background: open ? `${layer.color}38` : undefined }}
+            >
+              <span
+                aria-hidden="true"
+                className="absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center border-2 bg-night-900/90 text-xl leading-none transition-transform group-hover:scale-125 group-focus-visible:scale-125"
+                style={{ ...PLUS_SPOTS[q], borderColor: layer.color, color: layer.color }}
+              >
+                {open ? "×" : "+"}
+              </span>
+            </button>
+          );
+        })}
     </div>
   );
 }

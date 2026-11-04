@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
 import CountUp from "../components/reactbits/CountUp";
 import PixelCard from "../components/reactbits/PixelCard";
 import PixelIcon from "../components/PixelIcon";
 import ScoreRing from "../components/ScoreRing";
 import LogPanel from "../components/LogPanel";
+import QuickLog from "../components/QuickLog";
 import { ICONS, levelIcon } from "../icons";
 import { CATEGORIES, scoreLabel, toViewModel } from "../data/healthScore";
 import { getHealthScore, localToday } from "../api";
@@ -223,6 +224,9 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
   const { status, data, error, retry } = useHealthScore(userId, date);
   const { overall, scores } = data;
   const byKey = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
+  const [quick, setQuick] = useState(null); // { key, anchor }: the ring section whose quick log is open
+  const [logRequest, setLogRequest] = useState(null);
+  const closeQuick = useCallback(() => setQuick(null), []);
   function handleLogged() {
     retry();
     setGameRefresh((value) => value + 1);
@@ -253,12 +257,18 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
         </div>
 
         <motion.div
-          className="order-first mx-auto w-full max-w-[420px] lg:order-2"
+          className="relative order-first mx-auto w-full max-w-[420px] lg:order-2"
           initial={{ opacity: 0, scale: 0.85 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: "spring", stiffness: 160, damping: 18, delay: 0.15 }}
         >
-          <ScoreRing key={`${date}-${status}`} scores={scores} categories={CATEGORIES}>
+          <ScoreRing
+            key={`${date}-${status}`}
+            scores={scores}
+            categories={CATEGORIES}
+            picked={quick?.key}
+            onPick={(key, anchor) => setQuick(key ? { key, anchor } : null)}
+          >
             <div className="flex flex-col items-center text-center">
               <PixelIcon icon={ICONS.trophy} size={48} className="h-auto w-8 drop-shadow-[0_0_12px_#f7b73380] sm:w-12" />
               <p className="mt-1 text-5xl font-bold leading-none sm:mt-2 sm:text-7xl">
@@ -276,6 +286,20 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
               </p>
             </div>
           </ScoreRing>
+          {quick && (
+            <QuickLog
+              key={quick.key}
+              category={quick.key}
+              userId={userId}
+              date={date}
+              today={today}
+              anchor={quick.anchor}
+              onClose={closeQuick}
+              onLogged={handleLogged}
+              onOpenMealLogger={() => setLogRequest({ tab: "meal", at: Date.now() })}
+            />
+          )}
+          <p className="mt-3 text-center text-sm text-muted">Tap a section of the ring to log it.</p>
         </motion.div>
 
         <div className="grid gap-8 sm:grid-cols-2 lg:order-3 lg:grid-cols-1 lg:gap-24">
@@ -287,7 +311,7 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
       <SummaryBar scores={scores} />
       <DayLog userId={userId} date={date} today={today} refreshKey={gameRefresh} />
       <GamificationPanel userId={userId} refreshKey={gameRefresh} />
-      <LogPanel userId={userId} date={date} onLogged={handleLogged} />
+      <LogPanel userId={userId} date={date} onLogged={handleLogged} request={logRequest} />
       <PlayerProfile profile={profile} onEdit={onEditProfile} />
 
       {data.disclaimer && <p className="mt-10 text-center text-sm text-muted">{data.disclaimer}</p>}

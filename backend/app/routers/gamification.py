@@ -8,7 +8,7 @@ from supabase import Client
 
 from app.database import get_supabase
 from app.gamification import AVATARS, LEAGUES, LEVEL_THRESHOLDS, POINTS, PointAction, level_progress
-from app.gamification_service import award_action
+from app.gamification_service import award_action, checkin_streak
 from app import healthscore_repo as health_repo
 from app.schemas import (
     AwardPointsIn,
@@ -242,6 +242,9 @@ def get_avatars(user_id: UUID, supabase: Client = Depends(get_supabase)):
             last_day = streak.get("last_completed_date")
             if streak["streak_type"] == "workout" and last_day and date.fromisoformat(str(last_day)[:10]) < today - timedelta(days=1):
                 streak["current_streak"] = 0
+        # the daily check-in streak (any log) is still alive until a whole day passes with nothing
+        days = checkin_streak(supabase, uid, today) or checkin_streak(supabase, uid, today - timedelta(days=1))
+        streaks = [{"streak_type": "checkin", "current_streak": days}, *streaks]
         return {
             "fitcoins": game.get("fitcoins") or 0,
             "equipped_avatar": game.get("equipped_avatar") or "starter",

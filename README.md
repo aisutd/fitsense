@@ -118,14 +118,15 @@ Example: a user at 200 points completes a workout, so `POST {"action": "workout_
 - Points are stored in `user_gamification.total_xp` (running total) and `xp_events` (history). The `award_points` database function updates both in one transaction, so simultaneous awards can't lose points.
 - FitCoins are a separate spendable balance. A completed workout grants 50 XP and 10 FitCoins; partial workouts, sleep, meals, daily goals, and seven-day workout streaks have backend-set rewards. Repeated logs do not pay twice for the same source.
 - League seasons last four weeks. Standings use the season-to-date HealthScore and consistency (days with any check-in), while the exact ranking score stays hidden. **Every player with a season HealthScore is ranked**, whether or not they've opened the league page: standings are computed for everyone in one bulk pass and stored in `league_season_scores`, refreshed at most every 10 minutes (after the response, so nobody waits for it). With at least five scored players in a league, the top 20% move up and the bottom 20% move down when the season closes; smaller leagues hold their tiers. The podium shows the top five.
-- Completing a first or tenth workout, or a seven-day workout streak, unlocks a badge and a FitCoin bonus. FitCoins buy avatars in the dashboard shop; the starter avatar is free.
+- Completing a first or tenth workout, or every 7th day in a row of the daily check-in streak (see below; recovery days count when anything is logged), unlocks a badge and a FitCoin bonus. FitCoins buy avatars in the dashboard shop; the starter avatar is free.
+- **Reward pop-ups**: logging anything that earns XP or FitCoins plays pixel-art effects from the button you pressed, and they grow with your **daily check-in streak** (consecutive days with any log, returned as `checkin_streak` by every log endpoint; recovery days with only steps or sleep keep it going): 1 day sparkle, 3 days gold plus a coin fountain, 5 days a "x5 DAY STREAK" counter, 7 days confetti, 14 days confetti from both sides. Badges and level-ups get a toast. Reduced motion shows only the text. Effects come from [pixelfx](https://github.com/patch-gg/pixelfx) (MIT), vendored in `src/fx/pixelfx`.
 - Unknown users get `404`; unknown actions get `422`.
 
 ### HealthScore
 
 An overall 0–100 score from four categories: **workouts 30%, nutrition 25%, sleep 25%, activity 20%** (weights come from the newest `health_score_config` row). The calculation is in `backend/app/healthscore.py` as reusable functions, one per category; `healthscore_repo.py` loads one user's logs (or everyone's, in a few bulk queries) and scores them in memory.
 
-**The screen scores one day** (`range=day`, the default), with a date picker to look back at any earlier day:
+**The screen scores one day** (`range=day`, the default), with a date picker to look back at any earlier day. **Tap a section of the ring to log it**: a small pop-up logs that category for the day on screen (one tap for a workout result, chips or a number for sleep and steps, a described meal looked up in the USDA data, with the full meal logger one click away):
 
 | Category | That day's score |
 |---|---|

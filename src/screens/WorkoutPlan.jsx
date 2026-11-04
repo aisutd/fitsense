@@ -4,6 +4,7 @@ import DashboardHeader from "../components/DashboardHeader";
 import PixelIcon from "../components/PixelIcon";
 import { ICONS } from "../icons";
 import { getCurrentPlan, localToday, logWorkout, validationMessage } from "../api";
+import { celebrate } from "../rewards";
 
 // This week's workout plan from the weekly plan model (weekly_plan.py): built from the profile in
 // week 1, then adapted each week to how many plan days were completed. Logging a day here links the
@@ -159,7 +160,7 @@ function DayCard({ day, busy, onLog, delay }) {
             key={s}
             type="button"
             disabled={busy}
-            onClick={() => onLog(day, s)}
+            onClick={(event) => onLog(day, s, event.currentTarget)}
             aria-pressed={day.status === s}
             className="px-frame px-focus px-3 py-1.5 text-lg transition-colors hover:text-ink disabled:opacity-50"
             style={{ "--frame": STATUS[s].color, color: day.status === s ? "var(--color-night-950)" : STATUS[s].color,
@@ -180,11 +181,12 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
   const today = localToday();
   const restToday = plan?.schedule?.find((entry) => entry.date === today)?.kind === "recovery";
 
-  async function log(day, completion) {
+  async function log(day, completion, anchor) {
     setBusy(true);
     setMessage(null);
     try {
       const result = await logWorkout(userId, today, completion, null, { planId: plan.plan_id, dayNumber: day.day });
+      celebrate(result, anchor);
       const reward = result?.rewards;
       const extras = [reward?.points_awarded && `+${reward.points_awarded} XP`, reward?.fitcoins_awarded && `+${reward.fitcoins_awarded} FitCoins`]
         .filter(Boolean).join(" ");

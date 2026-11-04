@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { equipAvatar, getAvatarInventory, getGamification, getLeague, purchaseAvatar } from "../api";
 
 const EMPTY = { league: null, inventory: null, status: null };
-const STREAK_LABELS = { workout: "Workout", daily_goals: "Daily goals", sleep: "Sleep" };
+const STREAK_LABELS = { checkin: "Daily check-in", workout: "Workout days in a row", daily_goals: "Daily goals", sleep: "Sleep" };
 
 function FitCoin({ amount, animate = false }) {
   return (
