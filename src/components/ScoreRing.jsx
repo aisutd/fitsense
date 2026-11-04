@@ -1,10 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 // Pixelated donut chart split into four quadrants (one per HealthScore
 // category). Each quadrant lights up clockwise in proportion to its score.
 // Lit cells pop in along the sweep, and each quadrant gets its own glow layer.
 // With onPick, each quadrant is also a button (clipped to its own arc) that
-// opens quick logging for that category.
+// opens quick logging for that category. Hovering, focusing or opening one
+// lights its own cells (the dim track takes the category's color, the glow
+// grows), so the highlight stays on the pixel grid.
 
 const N = 46; // grid size in cells
 const C = (N - 1) / 2;
@@ -62,6 +64,8 @@ const PLUS_SPOTS = QUADRANT_ORDER.map((_, q) => {
 });
 
 function ScoreRing({ scores, categories, children, className = "", onPick, picked }) {
+  const [hovered, setHovered] = useState(null);
+  const lit = (key) => key === hovered || key === picked;
   const layers = useMemo(() => {
     const byKey = Object.fromEntries(categories.map((c) => [c.key, c]));
     return QUADRANT_ORDER.map((key, q) => {
@@ -86,7 +90,17 @@ function ScoreRing({ scores, categories, children, className = "", onPick, picke
         {layers.flatMap((layer) =>
           layer.cells
             .filter((c) => !c.lit)
-            .map((c) => <rect key={`${layer.key}-${c.x}-${c.y}`} x={c.x} y={c.y} width={1} height={1} fill="#1f2c4f" />)
+            .map((c) => (
+              <rect
+                key={`${layer.key}-${c.x}-${c.y}`}
+                x={c.x}
+                y={c.y}
+                width={1}
+                height={1}
+                fill={lit(layer.key) ? layer.color : "#1f2c4f"}
+                fillOpacity={lit(layer.key) ? (c.edge === "hi" ? 0.45 : 0.3) : 1}
+              />
+            ))
         )}
       </svg>
 
@@ -95,7 +109,7 @@ function ScoreRing({ scores, categories, children, className = "", onPick, picke
         <svg
           key={layer.key}
           className="absolute inset-0 h-full w-full"
-          style={{ filter: `drop-shadow(0 0 10px ${layer.color}99)` }}
+          style={{ filter: lit(layer.key) ? `drop-shadow(0 0 14px ${layer.color}) brightness(1.15)` : `drop-shadow(0 0 10px ${layer.color}99)` }}
           viewBox={`0 0 ${N} ${N}`}
           shapeRendering="crispEdges"
           aria-hidden="true"
@@ -133,18 +147,24 @@ function ScoreRing({ scores, categories, children, className = "", onPick, picke
             <button
               key={layer.key}
               type="button"
-              data-quadrant={layer.key}
+              data-quicklog={layer.key}
               aria-label={`Log ${cat.label.toLowerCase()}`}
               aria-haspopup="dialog"
               aria-expanded={open}
               onClick={(event) => onPick(open ? null : layer.key, event.currentTarget)}
-              className="ring-hit group absolute inset-0 z-10 cursor-pointer outline-none"
-              style={{ clipPath: HIT_SHAPES[q], "--hit": layer.color, background: open ? `${layer.color}38` : undefined }}
+              onPointerEnter={() => setHovered(layer.key)}
+              onPointerLeave={() => setHovered(null)}
+              onFocus={() => setHovered(layer.key)}
+              onBlur={() => setHovered(null)}
+              className="group absolute inset-0 z-10 cursor-pointer outline-none"
+              style={{ clipPath: HIT_SHAPES[q] }}
             >
               <span
                 aria-hidden="true"
-                className="absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center border-2 bg-night-900/90 text-xl leading-none transition-transform group-hover:scale-125 group-focus-visible:scale-125"
-                style={{ ...PLUS_SPOTS[q], borderColor: layer.color, color: layer.color }}
+                className="absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center border-2 text-xl leading-none transition-transform group-hover:scale-125 group-focus-visible:scale-125"
+                style={{ ...PLUS_SPOTS[q], borderColor: layer.color,
+                         color: lit(layer.key) ? "var(--color-night-950)" : layer.color,
+                         background: lit(layer.key) ? layer.color : "rgb(10 17 34 / 0.9)" }}
               >
                 {open ? "×" : "+"}
               </span>

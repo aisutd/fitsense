@@ -239,13 +239,6 @@ input[type="number"] {
   animation: ring-pop 260ms steps(3, end) both;
 }
 
-/* A ring quadrant as a quick-log button: it lights up on hover and keyboard focus
-   (an outline would be clipped away with the rest of the box). */
-.ring-hit:hover,
-.ring-hit:focus-visible {
-  background: color-mix(in srgb, var(--hit) 24%, transparent);
-}
-
 /* Blinking text cursor */
 @keyframes blink {
   50% { opacity: 0; }

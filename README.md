@@ -126,7 +126,7 @@ Example: a user at 200 points completes a workout, so `POST {"action": "workout_
 
 An overall 0–100 score from four categories: **workouts 30%, nutrition 25%, sleep 25%, activity 20%** (weights come from the newest `health_score_config` row). The calculation is in `backend/app/healthscore.py` as reusable functions, one per category; `healthscore_repo.py` loads one user's logs (or everyone's, in a few bulk queries) and scores them in memory.
 
-**The screen scores one day** (`range=day`, the default), with a date picker to look back at any earlier day. **Tap a section of the ring to log it**: a small pop-up logs that category for the day on screen (one tap for a workout result, chips or a number for sleep and steps, a described meal looked up in the USDA data, with the full meal logger one click away):
+**The screen scores one day** (`range=day`, the default), with a date picker to look back at any earlier day. **Tap a section of the ring, or a category card, to log it**: a small pop-up logs that category for the day on screen (one tap for a workout result, chips or a number for sleep and steps, a described meal looked up in the USDA data, with the full meal logger one click away):
 
 | Category | That day's score |
 |---|---|

@@ -101,6 +101,8 @@ export default function PixelCard({
   radius = 24,
   className = '',
   style,
+  // -1 when a button inside the card takes focus: the card still lights up for it
+  tabIndex = 0,
   children
 }) {
   const containerRef = useRef(null);
@@ -584,7 +586,7 @@ export default function PixelCard({
       style={{ '--pixel-card-radius': `${radius}px`, ...style }}
       onFocus={focusOff ? undefined : event => engineRef.current?.onFocus(event)}
       onBlur={focusOff ? undefined : event => engineRef.current?.onBlur(event)}
-      tabIndex={focusOff ? -1 : 0}
+      tabIndex={focusOff ? -1 : tabIndex}
     >
       <canvas className="pixel-card-canvas" ref={canvasRef} aria-hidden="true" />
       {children}

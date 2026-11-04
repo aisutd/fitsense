@@ -143,7 +143,8 @@ function MealLog({ userId, date, busy, setBusy, setError, onSave, onOpenMealLogg
   );
 }
 
-function QuickLog({ category, userId, date, today, anchor, onClose, onLogged, onOpenMealLogger }) {
+// placement: position classes; by default it opens over the ring, beside the category's section.
+function QuickLog({ category, userId, date, today, anchor, placement, onClose, onLogged, onOpenMealLogger }) {
   const setup = SETUP[category];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -160,8 +161,8 @@ function QuickLog({ category, userId, date, today, anchor, onClose, onLogged, on
       if (refocus) anchor?.focus();
     };
     const onKey = (e) => e.key === "Escape" && close(true);
-    // a click on another ring section switches the pop-up instead (the section handles that)
-    const onDown = (e) => !panel.current?.contains(e.target) && !e.target.closest?.("[data-quadrant]") && close(false);
+    // a click on another ring section or card switches the pop-up instead (it handles that itself)
+    const onDown = (e) => !panel.current?.contains(e.target) && !e.target.closest?.("[data-quicklog]") && close(false);
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onDown);
     return () => {
@@ -189,7 +190,8 @@ function QuickLog({ category, userId, date, today, anchor, onClose, onLogged, on
       ref={panel}
       role="dialog"
       aria-label={`${setup.title} for ${when}`}
-      className={`px-frame absolute left-1/2 z-30 w-[min(20rem,calc(100vw-2rem))] -translate-x-1/2 bg-night-800/95 p-4 shadow-2xl sm:translate-x-0 ${PLACE[category]}`}
+      className={`px-frame absolute z-30 w-[min(20rem,calc(100vw-2rem))] bg-night-800/95 p-4 shadow-2xl ${
+        placement ?? `left-1/2 -translate-x-1/2 sm:translate-x-0 ${PLACE[category]}`}`}
       style={{ "--frame": setup.color }}
     >
       <div className="flex items-start justify-between gap-3">
