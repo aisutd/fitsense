@@ -21,7 +21,8 @@ function FitCoin({ amount, animate = false }) {
   );
 }
 
-function GamificationPanel({ userId, refreshKey = 0 }) {
+// page: shown as its own tab (the League screen), so the title is the page heading
+function GamificationPanel({ userId, refreshKey = 0, page = false }) {
   const [data, setData] = useState(EMPTY);
   const [state, setState] = useState("loading");
   const [busyAvatar, setBusyAvatar] = useState(null);
@@ -71,11 +72,15 @@ function GamificationPanel({ userId, refreshKey = 0 }) {
   const equippedEmoji = inventory?.avatars?.find((avatar) => avatar.id === inventory.equipped_avatar)?.emoji || "🧑‍🚀";
 
   return (
-    <section className="mt-14" aria-labelledby="game-title">
+    <section className={page ? "mt-10" : "mt-14"} aria-labelledby="game-title">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm uppercase tracking-[0.2em] text-gold">Your game layer</p>
-          <h2 id="game-title" className="mt-2 text-3xl font-bold sm:text-4xl">Leagues & FitCoins</h2>
+          {page ? (
+            <h1 id="game-title" className="mt-2 text-5xl sm:text-6xl">League</h1>
+          ) : (
+            <h2 id="game-title" className="mt-2 text-3xl font-bold sm:text-4xl">Leagues & FitCoins</h2>
+          )}
         </div>
         <div className="relative flex items-center gap-3 px-frame bg-night-800/90 px-5 py-3 [--frame:var(--color-gold)]">
           <span className="text-3xl" aria-label="Equipped avatar">{equippedEmoji}</span>

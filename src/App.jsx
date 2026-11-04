@@ -6,6 +6,7 @@ import RewardLayer from "./components/RewardLayer";
 import { NameGreeting, Information, GoalScreen, Proficiency, WorkoutDays, WorkoutLocation } from "./screens/Onboarding";
 import HealthScore from "./screens/HealthScore";
 import Forecast from "./screens/Forecast";
+import League from "./screens/League";
 import WorkoutPlan from "./screens/WorkoutPlan";
 import Auth from "./screens/Auth";
 import { fromApiProfile, getProfile, profileErrorMessage, saveProfile, toApiProfile } from "./api";
@@ -16,7 +17,8 @@ const LOADING = 0;
 const DASHBOARD = 7;
 const FORECAST = 8;
 const PLAN = 9;
-const TAB_SCREENS = { health: DASHBOARD, forecast: FORECAST, plan: PLAN };
+const LEAGUE = 10;
+const TAB_SCREENS = { health: DASHBOARD, forecast: FORECAST, plan: PLAN, league: LEAGUE };
 
 const USER_KEY = "fitsense:userId";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -228,6 +230,8 @@ function App() {
         onNavigate={(tab) => goTo(TAB_SCREENS[tab])}
       />
     );
+  } else if (screen === LEAGUE) {
+    content = <League userId={userId} onLogout={handleLogout} onNavigate={(tab) => goTo(TAB_SCREENS[tab])} />;
   } else if (screen === PLAN) {
     content = (
       <WorkoutPlan

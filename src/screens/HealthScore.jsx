@@ -12,7 +12,6 @@ import { getHealthScore, localToday } from "../api";
 import DateSwitcher from "../components/DateSwitcher";
 import DayLog from "../components/DayLog";
 import DashboardHeader from "../components/DashboardHeader";
-import GamificationPanel from "../components/GamificationPanel";
 
 const CATEGORY_ICONS = {
   nutrition: ICONS.apple,
@@ -346,7 +345,6 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
 
       <SummaryBar scores={scores} />
       <DayLog userId={userId} date={date} today={today} refreshKey={gameRefresh} />
-      <GamificationPanel userId={userId} refreshKey={gameRefresh} />
       <LogPanel userId={userId} date={date} onLogged={handleLogged} request={logRequest} />
       <PlayerProfile profile={profile} onEdit={onEditProfile} />
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import { GROUPS } from "../muscles/body";
+import { MUSCLE_LABELS } from "../muscles/labels";
 import { decodeBody } from "../muscles/sculpt";
 import { createMuscleScene } from "../muscles/scene";
 
@@ -10,12 +11,7 @@ import { createMuscleScene } from "../muscles/scene";
 
 const MUSCLE = "#ff5d6c";
 const DIM = "#9c3a4f";
-const LABELS = {
-  chest: "Chest", shoulders: "Shoulders", traps: "Traps", lats: "Lats", "middle back": "Middle back",
-  "lower back": "Lower back", abdominals: "Abs", neck: "Neck", biceps: "Biceps", triceps: "Triceps",
-  forearms: "Forearms", glutes: "Glutes", abductors: "Abductors", adductors: "Adductors",
-  quadriceps: "Quads", hamstrings: "Hamstrings", calves: "Calves",
-};
+const LABELS = MUSCLE_LABELS;
 const DRAG = 4; // px before a press counts as turning the body instead of a tap
 
 let bodyFile = null;
