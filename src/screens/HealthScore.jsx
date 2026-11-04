@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
 import CountUp from "../components/reactbits/CountUp";
 import PixelCard from "../components/reactbits/PixelCard";
 import PixelIcon from "../components/PixelIcon";
 import ScoreRing from "../components/ScoreRing";
 import LogPanel from "../components/LogPanel";
+import QuickLog from "../components/QuickLog";
 import { ICONS, levelIcon } from "../icons";
 import { CATEGORIES, scoreLabel, toViewModel } from "../data/healthScore";
 import { getHealthScore, localToday } from "../api";
@@ -42,10 +43,11 @@ const rise = (delay = 0) => ({
 });
 
 // Category card. `side` decides which edge the connector line to the ring
-// comes out of on large screens.
-function CategoryCard({ category, data, side, delay }) {
+// comes out of on large screens. The whole card is a button that opens quick
+// logging for its category (children: the open pop-up, placed under the card).
+function CategoryCard({ category, data, side, delay, open, onLog, children }) {
   return (
-    <motion.div {...rise(delay)} className="relative">
+    <motion.div {...rise(delay)} className={`relative ${open ? "z-30" : ""}`}>
       <PixelCard
         className="hs-card px-frame px-glow"
         style={{ "--frame": category.color }}
@@ -55,13 +57,32 @@ function CategoryCard({ category, data, side, delay }) {
         speed={30}
         radius={0}
         introDelay={delay * 1000 + 300}
+        tabIndex={-1}
       >
+        <button
+          type="button"
+          data-quicklog={category.key}
+          aria-label={`Log ${category.label.toLowerCase()}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={(event) => onLog(open ? null : event.currentTarget)}
+          className="inset-0 cursor-pointer outline-none focus-visible:outline-[3px] focus-visible:outline-offset-4 focus-visible:outline-cyan"
+          style={{ position: "absolute", zIndex: 10 }} // inline: PixelCard makes its children position: relative
+        />
         <div className="w-full p-5 sm:p-6">
           <div className="flex items-center gap-3">
             <PixelIcon icon={CATEGORY_ICONS[category.key]} size={36} />
             <h3 className="text-2xl font-bold" style={{ color: category.color }}>
               {category.label}
             </h3>
+            <span
+              aria-hidden="true"
+              className="ml-auto border-2 px-2 text-lg leading-tight"
+              style={{ borderColor: category.color, color: open ? "var(--color-night-950)" : category.color,
+                       background: open ? category.color : undefined }}
+            >
+              {open ? "× Close" : "+ Log"}
+            </span>
           </div>
           <p className="mt-3 text-4xl font-bold">
             <Score value={data.score} duration={1.2} delay={delay + 0.3} />
@@ -70,6 +91,7 @@ function CategoryCard({ category, data, side, delay }) {
           <p className="mt-2 text-muted">{data.note}</p>
         </div>
       </PixelCard>
+      {children}
 
       {/* Connector to the ring (desktop layout only) */}
       <div
@@ -223,10 +245,40 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
   const { status, data, error, retry } = useHealthScore(userId, date);
   const { overall, scores } = data;
   const byKey = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
+  const [quick, setQuick] = useState(null); // { key, anchor, from: "ring" | "card" }: the open quick log
+  const [logRequest, setLogRequest] = useState(null);
+  const closeQuick = useCallback(() => setQuick(null), []);
   function handleLogged() {
     retry();
     setGameRefresh((value) => value + 1);
   }
+  const quickLog = (key, from, placement) =>
+    quick?.key === key && quick.from === from && (
+      <QuickLog
+        key={`${from}-${key}`}
+        category={key}
+        userId={userId}
+        date={date}
+        today={today}
+        anchor={quick.anchor}
+        placement={placement}
+        onClose={closeQuick}
+        onLogged={handleLogged}
+        onOpenMealLogger={() => setLogRequest({ tab: "meal", at: Date.now() })}
+      />
+    );
+  const card = (key, side, delay) => (
+    <CategoryCard
+      category={byKey[key]}
+      data={scores[key]}
+      side={side}
+      delay={delay}
+      open={quick?.key === key && quick.from === "card"}
+      onLog={(anchor) => setQuick(anchor ? { key, anchor, from: "card" } : null)}
+    >
+      {quickLog(key, "card", "left-0 top-[calc(100%+0.75rem)]")}
+    </CategoryCard>
+  );
 
   return (
     <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-8 sm:pt-10">
@@ -248,17 +300,23 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
 
       <div className="mt-12 grid items-center gap-8 lg:grid-cols-[1fr_minmax(300px,420px)_1fr] lg:gap-x-16 lg:gap-y-0">
         <div className="grid gap-8 sm:grid-cols-2 lg:order-1 lg:grid-cols-1 lg:gap-24">
-          <CategoryCard category={byKey.nutrition} data={scores.nutrition} side="left" delay={0.35} />
-          <CategoryCard category={byKey.activity} data={scores.activity} side="left" delay={0.55} />
+          {card("nutrition", "left", 0.35)}
+          {card("activity", "left", 0.55)}
         </div>
 
         <motion.div
-          className="order-first mx-auto w-full max-w-[420px] lg:order-2"
+          className="relative order-first mx-auto w-full max-w-[420px] lg:order-2"
           initial={{ opacity: 0, scale: 0.85 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: "spring", stiffness: 160, damping: 18, delay: 0.15 }}
         >
-          <ScoreRing key={`${date}-${status}`} scores={scores} categories={CATEGORIES}>
+          <ScoreRing
+            key={`${date}-${status}`}
+            scores={scores}
+            categories={CATEGORIES}
+            picked={quick?.key}
+            onPick={(key, anchor) => setQuick(key ? { key, anchor, from: "ring" } : null)}
+          >
             <div className="flex flex-col items-center text-center">
               <PixelIcon icon={ICONS.trophy} size={48} className="h-auto w-8 drop-shadow-[0_0_12px_#f7b73380] sm:w-12" />
               <p className="mt-1 text-5xl font-bold leading-none sm:mt-2 sm:text-7xl">
@@ -276,18 +334,20 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
               </p>
             </div>
           </ScoreRing>
+          {quick?.from === "ring" && quickLog(quick.key, "ring")}
+          <p className="mt-3 text-center text-sm text-muted">Tap a section of the ring or a card to log it.</p>
         </motion.div>
 
         <div className="grid gap-8 sm:grid-cols-2 lg:order-3 lg:grid-cols-1 lg:gap-24">
-          <CategoryCard category={byKey.workouts} data={scores.workouts} side="right" delay={0.45} />
-          <CategoryCard category={byKey.sleep} data={scores.sleep} side="right" delay={0.65} />
+          {card("workouts", "right", 0.45)}
+          {card("sleep", "right", 0.65)}
         </div>
       </div>
 
       <SummaryBar scores={scores} />
       <DayLog userId={userId} date={date} today={today} refreshKey={gameRefresh} />
       <GamificationPanel userId={userId} refreshKey={gameRefresh} />
-      <LogPanel userId={userId} date={date} onLogged={handleLogged} />
+      <LogPanel userId={userId} date={date} onLogged={handleLogged} request={logRequest} />
       <PlayerProfile profile={profile} onEdit={onEditProfile} />
 
       {data.disclaimer && <p className="mt-10 text-center text-sm text-muted">{data.disclaimer}</p>}

@@ -9,7 +9,7 @@ from app import healthscore_repo as repo
 from app import plans
 from app.database import get_supabase
 from app.gamification import PointAction
-from app.gamification_service import award_action, record_workout_streak
+from app.gamification_service import award_action, checkin, record_workout_streak
 from app.schemas import ActivityLogIn, GoalsIn, GoalsOut, MealLogIn, SleepLogIn, WorkoutLogIn
 
 router = APIRouter(tags=["logs & goals"])
@@ -68,15 +68,10 @@ def log_workout(user_id: UUID, body: WorkoutLogIn, supabase: Client = Depends(ge
     if body.completion_status.value == "completed":
         reward = award_action(supabase, str(user_id), PointAction.workout_completed, saved["workout_log_id"])
         streak = record_workout_streak(supabase, str(user_id), body.workout_date)
-        if streak and streak.get("reward"):
-            streak_reward = streak["reward"]
-            reward["points_awarded"] += streak_reward["points_awarded"]
-            reward["fitcoins_awarded"] += streak_reward["fitcoins_awarded"]
-            reward["fitcoins_balance"] = streak_reward["fitcoins_balance"]
-            reward["badges_earned"].extend(streak_reward["badges_earned"])
     elif body.completion_status.value == "partial":
         reward = award_action(supabase, str(user_id), PointAction.workout_partial, saved["workout_log_id"])
-    return {**saved, "rewards": reward, "streak": streak}
+    reward, days = checkin(supabase, str(user_id), body.workout_date, reward)
+    return {**saved, "rewards": reward, "streak": streak, "checkin_streak": days}
 
 
 @router.put("/logs/{user_id}/sleep/{sleep_date}")
@@ -85,7 +80,8 @@ def log_sleep(user_id: UUID, sleep_date: date, body: SleepLogIn, supabase: Clien
     row = {"user_id": str(user_id), "sleep_date": sleep_date.isoformat(), **body.model_dump(mode="json")}
     saved = _write("log sleep", lambda: supabase.table("sleep_logs").upsert(row, on_conflict="user_id,sleep_date").execute())
     reward = award_action(supabase, str(user_id), PointAction.sleep_logged, sleep_date.isoformat())
-    return {**saved, "rewards": reward}
+    reward, days = checkin(supabase, str(user_id), sleep_date + timedelta(days=1), reward)
+    return {**saved, "rewards": reward, "checkin_streak": days}
 
 
 @router.put("/logs/{user_id}/activity/{log_date}")
@@ -98,7 +94,8 @@ def log_activity(user_id: UUID, log_date: date, body: ActivityLogIn, supabase: C
     met_steps = body.steps is not None and body.steps >= targets["daily_steps"]
     met_minutes = body.active_minutes is not None and body.active_minutes >= targets["daily_active_minutes"]
     reward = award_action(supabase, str(user_id), PointAction.daily_goals_met, log_date.isoformat()) if (met_steps or met_minutes) else None
-    return {**saved, "rewards": reward}
+    reward, days = checkin(supabase, str(user_id), log_date, reward)
+    return {**saved, "rewards": reward, "checkin_streak": days}
 
 
 @router.post("/logs/{user_id}/meals")
@@ -115,7 +112,8 @@ def log_meal(user_id: UUID, body: MealLogIn, supabase: Client = Depends(get_supa
     }
     saved = _write("log meal", lambda: supabase.table("meal_entries").insert(row).execute())
     reward = award_action(supabase, str(user_id), PointAction.meal_logged, saved["meal_id"])
-    return {**saved, "rewards": reward}
+    reward, days = checkin(supabase, str(user_id), body.log_date, reward)
+    return {**saved, "rewards": reward, "checkin_streak": days}
 
 
 @router.get("/goals/{user_id}", response_model=GoalsOut)

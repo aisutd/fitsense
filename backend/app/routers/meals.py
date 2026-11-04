@@ -12,7 +12,7 @@ from supabase import Client
 from app.database import get_supabase
 from app.food import service
 from app.food.fdc import FdcClient, FdcError
-from app.schemas import (AnalyzeMealIn, FoodSearchHit, FoodSuggestion, MealItemAddIn, MealItemUpdateIn, MealOut,
+from app.schemas import (AnalyzeMealIn, ConfirmedMealOut, FoodSearchHit, FoodSuggestion, MealItemAddIn, MealItemUpdateIn, MealOut,
                          MealStartIn)
 
 router = APIRouter(tags=["food logging"])
@@ -100,7 +100,7 @@ def delete_meal_item(meal_id: UUID, item_id: UUID, supabase: Client = Depends(ge
     return _run(service.delete_item, supabase, catalog, str(meal_id), str(item_id))
 
 
-@router.post("/meals/{meal_id}/confirm", response_model=MealOut)
+@router.post("/meals/{meal_id}/confirm", response_model=ConfirmedMealOut)
 def confirm_meal(meal_id: UUID, supabase: Client = Depends(get_supabase), catalog: service.Catalog = Depends(get_catalog)):
     """Lock in the meal: it now counts toward the HealthScore and earns meal_logged points."""
     return _run(service.confirm, supabase, catalog, str(meal_id))

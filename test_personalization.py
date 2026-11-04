@@ -710,6 +710,44 @@ class WeeklyPlanTests(unittest.TestCase):
         self.assertIn('60 min moderate-to-vigorous effort',
                       plans.format_plan(youth, plans.first_week(youth, self.exercises, date(2026, 10, 5))))
 
+    def test_every_week_keeps_a_recovery_day(self):
+        daily = {**self.profile, 'workout_frequency': 7}
+        week_one = plans.first_week(daily, self.exercises, date(2026, 10, 5))
+        self.assertEqual(week_one['days'], plans.MAX_TRAINING_DAYS)
+        week_two = plans.next_week(daily, self.exercises, week_one, self.logs(*['completed'] * 6))
+        self.assertEqual(week_two['days'], plans.MAX_TRAINING_DAYS)
+        self.assertEqual(plans.MAX_TRAINING_DAYS, hs.MAX_WORKOUT_DAYS)
+
+    def test_training_days_are_spaced_with_recovery_days(self):
+        weekdays = lambda count: [plans.WEEKDAYS[i] for i in plans.spread(count, 7)]
+        self.assertEqual(weekdays(2), ['Mon', 'Thu'])
+        self.assertEqual(weekdays(3), ['Mon', 'Wed', 'Fri'])
+        self.assertEqual(weekdays(4), ['Mon', 'Wed', 'Fri', 'Sun'])
+        self.assertEqual(weekdays(6), ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])  # Sunday off
+        self.assertNotIn('Sun', weekdays(5))
+
+    def test_schedule_replans_the_rest_of_the_week(self):
+        monday = date(2026, 10, 5)
+        # Day 1 done on Tuesday; on Wednesday the two open days go to Thursday and Saturday,
+        # leaving a recovery day after Tuesday's workout.
+        schedule = plans.week_schedule(monday, 3, {1: date(2026, 10, 6)}, date(2026, 10, 7))
+        self.assertEqual([(e['weekday'], e['day']) for e in schedule],
+                         [('Mon', None), ('Tue', 1), ('Wed', None), ('Thu', 2), ('Fri', None), ('Sat', 3), ('Sun', None)])
+        self.assertEqual(schedule[0]['kind'], 'recovery')
+        # Three open days from Friday on: no room left for recovery.
+        late = plans.week_schedule(monday, 3, {}, date(2026, 10, 9))
+        self.assertEqual([e['day'] for e in late][4:], [1, 2, 3])
+
+    def test_recovery_routine_is_light(self):
+        routine = plans.recovery_routine(self.profile, self.exercises)
+        self.assertIn('walk', routine['walk'])
+        self.assertEqual(len(routine['stretches']), len(plans.RECOVERY_AREAS))
+        for item in routine['stretches']:
+            self.assertEqual((item['exercise']['category'], item['exercise']['level']), ('stretching', 'beginner'))
+            self.assertIn('hold', plans.dose_text(self.profile, item))
+        self.assertIn('Recovery days (optional)', plans.format_plan(self.profile, self.week_one, self.exercises))
+        self.assertIn('Schedule: Mon Day 1, Tue recovery, Wed Day 2', plans.format_plan(self.profile, self.week_one))
+
     def test_exercise_rows_fit_the_table_constraints(self):
         rows = [plans.exercise_row(e) for e in self.exercises['home'] + self.exercises['gym']]
         self.assertLessEqual({r['workout_type'] for r in rows}, set(ranker.PREFERENCES))

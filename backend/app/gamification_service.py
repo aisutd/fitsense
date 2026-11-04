@@ -59,8 +59,59 @@ def award_action(db, user_id: str, action: PointAction, source_id: str | None = 
     }
 
 
+# Where each kind of log says which day it was for. Sleep is logged for the night before, so last
+# night's sleep is a check-in for the day you woke up.
+CHECKIN_DATES = (("workout_logs", "workout_date", 0), ("activity_logs", "log_date", 0),
+                 ("meal_entries", "log_date", 0), ("sleep_logs", "sleep_date", 1))
+CHECKIN_LOOKBACK = 120
+
+
+def checkin_streak(db, user_id: str, day: date) -> int:
+    """Consecutive days, ending on day, with anything logged: a workout, steps, sleep or a confirmed meal.
+
+    Unlike the workout streak this one survives recovery days, so it drives the reward effects."""
+    start = day - timedelta(days=CHECKIN_LOOKBACK)
+    days = set()
+    for table, column, shift in CHECKIN_DATES:
+        query = (db.table(table).select(column).eq("user_id", user_id)
+                 .gte(column, (start - timedelta(days=shift)).isoformat())
+                 .lte(column, (day - timedelta(days=shift)).isoformat()))
+        if table == "meal_entries":
+            query = query.eq("status", "confirmed")
+        days |= {date.fromisoformat(str(row[column])[:10]) + timedelta(days=shift) for row in query.execute().data}
+    streak = 0
+    while day - timedelta(days=streak) in days:
+        streak += 1
+    return streak
+
+
+def merge_rewards(reward: dict | None, extra: dict | None) -> dict | None:
+    """One reward for a log that earned several (the log itself plus a streak bonus)."""
+    if not extra or not extra.get("awarded"):
+        return reward
+    if not reward:
+        return extra
+    return {**reward,
+            "points_awarded": reward["points_awarded"] + extra["points_awarded"],
+            "fitcoins_awarded": reward["fitcoins_awarded"] + extra["fitcoins_awarded"],
+            "fitcoins_balance": extra["fitcoins_balance"],
+            "badges_earned": reward["badges_earned"] + extra["badges_earned"],
+            "total_points": extra["total_points"], "level": extra["level"]}
+
+
+def checkin(db, user_id: str, day: date, reward: dict | None) -> tuple[dict | None, int]:
+    """(reward, check-in streak) after a log for day: every 7th day in a row adds the 7-day streak
+    reward and badge. Recovery days count as long as something was logged."""
+    streak = checkin_streak(db, user_id, day)
+    if streak >= 7 and streak % 7 == 0:
+        bonus = award_action(db, user_id, PointAction.streak_7_days, f"checkin:{day.isoformat()}")
+        reward = merge_rewards(reward, bonus)
+    return reward, streak
+
+
 def record_workout_streak(db, user_id: str, workout_day: date) -> dict | None:
-    """Update consecutive completed-workout days and grant a streak award each 7 days."""
+    """Update consecutive completed-workout days (shown in the dashboard). The 7-day streak reward
+    comes from the check-in streak instead (checkin()), which recovery days don't break."""
     rows = db.table("workout_logs").select("workout_date").eq(
         "user_id", user_id
     ).eq("completion_status", "completed").lte(
@@ -92,7 +143,4 @@ def record_workout_streak(db, user_id: str, workout_day: date) -> dict | None:
         "last_completed_date": workout_day.isoformat(),
     }, on_conflict="user_id,streak_type").execute()
 
-    reward = None
-    if streak >= 7 and streak % 7 == 0:
-        reward = award_action(db, user_id, PointAction.streak_7_days, workout_day.isoformat())
-    return {"current_streak": streak, "longest_streak": max(streak, previous[0].get("longest_streak", 0) if previous else 0), "reward": reward}
+    return {"current_streak": streak, "longest_streak": max(streak, previous[0].get("longest_streak", 0) if previous else 0)}

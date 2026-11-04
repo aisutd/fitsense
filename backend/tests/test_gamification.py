@@ -168,3 +168,33 @@ def test_actions_and_levels_listed(client):
     assert levels[0] == {"level": 1, "min_points": 0}
     assert levels[1] == {"level": 2, "min_points": 200}
     assert len(levels) == MAX_LEVEL
+
+
+# --- daily check-in streak (drives the reward effects) ----------------------
+
+def test_checkin_streak_counts_any_log_and_survives_recovery_days(client, user_id):
+    log = lambda path, method="put", **body: getattr(client, method)(f"/logs/{user_id}/{path}", json=body).json()
+    assert log("activity/2026-10-26", steps=5000)["checkin_streak"] == 1
+    # last night's sleep counts for the day you woke up (the 27th)
+    assert log("sleep/2026-10-26", hours_slept=7.5, sleep_quality=4)["checkin_streak"] == 2
+    # a recovery day with only steps keeps it going; a completed workout extends it
+    assert log("activity/2026-10-28", steps=4000)["checkin_streak"] == 3
+    assert log("workouts", "post", workout_date="2026-10-29", completion_status="completed")["checkin_streak"] == 4
+    # a day with nothing logged breaks it
+    assert log("activity/2026-10-31", steps=9000)["checkin_streak"] == 1
+
+
+def test_seven_day_streak_reward_comes_from_the_checkin_streak(client, user_id, fake_db):
+    # six days of steps (recovery days, no workouts), then a completed workout on day seven
+    for day in range(20, 26):
+        client.put(f"/logs/{user_id}/activity/2026-10-{day}", json={"steps": 3000})
+    seventh = client.post(f"/logs/{user_id}/workouts", json={"workout_date": "2026-10-26", "completion_status": "completed"}).json()
+    assert seventh["checkin_streak"] == 7
+    workout_xp = POINTS[PointAction.workout_completed]
+    assert seventh["rewards"]["points_awarded"] == workout_xp + POINTS[PointAction.streak_7_days]
+    # logging something else for the same day doesn't pay the streak bonus twice
+    client.put(f"/logs/{user_id}/sleep/2026-10-25", json={"hours_slept": 8})
+    bonuses = [e for e in fake_db.tables["xp_events"].values() if e["action"] == PointAction.streak_7_days.value]
+    assert [e["source_id"] for e in bonuses] == ["checkin:2026-10-26"]
+    streaks = client.get(f"/gamification/{user_id}/avatars").json()["streaks"]
+    assert streaks[0]["streak_type"] == "checkin"

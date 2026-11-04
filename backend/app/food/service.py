@@ -13,7 +13,8 @@ from supabase import Client
 from app.food import lexicon, parser
 from app.food.fdc import FdcClient, FdcError, Food, Portion, SearchHit, _words, description_confidence, rank_hits
 from app.food.portions import nutrients, to_grams, unit_options
-from app.gamification import LEVEL_THRESHOLDS, POINTS, PointAction
+from app.gamification import PointAction
+from app.gamification_service import award_action, checkin
 
 CACHE_DAYS = 30
 REVIEW_BELOW = 0.6          # match confidence under this asks the player to check the food
@@ -374,12 +375,10 @@ def confirm(db: Client, catalog: Catalog, meal_id: str) -> dict:
     if missing:
         raise MealError(422, f"Pick a food for: {', '.join(missing)}")
     db.table("meal_entries").update({"status": "confirmed", "confirmed_at": _now()}).eq("meal_id", meal_id).execute()
-    db.rpc("award_points", {
-        "p_user_id": meal["user_id"], "p_action": PointAction.meal_logged.value,
-        "p_points": POINTS[PointAction.meal_logged], "p_level_thresholds": LEVEL_THRESHOLDS,
-        "p_source_id": meal_id,
-    }).execute()
-    return load_meal(db, catalog, meal_id)
+    reward = award_action(db, meal["user_id"], PointAction.meal_logged, meal_id)
+    logged_on = date.fromisoformat(str(meal["log_date"])[:10])
+    reward, days = checkin(db, meal["user_id"], logged_on, reward)
+    return {**load_meal(db, catalog, meal_id), "rewards": reward, "checkin_streak": days}
 
 
 def discard(db: Client, catalog: Catalog, meal_id: str) -> dict:
