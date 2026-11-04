@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { motion } from "motion/react";
 import DashboardHeader from "../components/DashboardHeader";
 import PixelIcon from "../components/PixelIcon";
 import { ICONS } from "../icons";
 import { getCurrentPlan, localToday, logWorkout, validationMessage } from "../api";
 import { celebrate } from "../rewards";
+
+// three.js and the body model load only when a plan day is shown
+const MuscleMap = lazy(() => import("../components/MuscleMap"));
 
 // This week's workout plan from the weekly plan model (weekly_plan.py): built from the profile in
 // week 1, then adapted each week to how many plan days were completed. Logging a day here links the
@@ -291,6 +294,11 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
             <div id="plan-today" className="mt-8 scroll-mt-6">
               <DayCard day={todayDay} busy={busy} onLog={log} isToday />
             </div>
+          )}
+          {todayDay && (
+            <Suspense fallback={<p role="status" className="mt-8 text-lg text-muted">Loading the muscle map…</p>}>
+              <MuscleMap exercises={todayDay.exercises} />
+            </Suspense>
           )}
           {otherDays.length > 0 && (
             <section className="mt-10" aria-labelledby="plan-other-days">

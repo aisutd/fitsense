@@ -156,7 +156,9 @@ def current_plan(client, user_id: str, today: date) -> dict:
     def exercise_out(item):
         return {"name": item["exercise"]["name"], "group": item["group"], "category": item["exercise"]["category"],
                 "level": item["exercise"]["level"], "equipment": item["exercise"]["equipment"],
-                "dose": wp.dose_text(profile, item), "instructions": item["exercise"]["instructions"]}
+                "dose": wp.dose_text(profile, item), "instructions": item["exercise"]["instructions"],
+                "primary_muscles": item["exercise"].get("primaryMuscles", []),
+                "secondary_muscles": item["exercise"].get("secondaryMuscles", [])}
 
     # Which day of the week each plan day falls on, with recovery days between them.
     logged = {day: date.fromisoformat(s["date"]) for day, s in statuses.items()}
