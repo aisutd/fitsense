@@ -5,8 +5,9 @@ import { MUSCLE_LABELS } from "../muscles/labels";
 import { decodeBody } from "../muscles/sculpt";
 import { createMuscleScene } from "../muscles/scene";
 
-// Which muscles today's plan day works, on the 3D muscle body (front and back). Primary muscles are
-// bright, secondary ones dim; tap a muscle (or its chip) to see which of today's exercises work it.
+// Which muscles today's plan day works, on the 3D muscle body (front and back), shown in the left
+// column of today's plan card. Primary muscles are bright, secondary ones dim; tap a muscle (or its
+// chip) to see which of today's exercises work it.
 // Loaded lazily with three.js, so the rest of the app doesn't pay for it.
 
 const MUSCLE = "#ff5d6c";
@@ -139,13 +140,11 @@ function MuscleMap({ exercises }) {
   ].filter(Boolean).join("; ");
 
   return (
-    <section className="px-frame mt-8 bg-night-800/90 p-5 sm:p-6" style={{ "--frame": "var(--color-night-600)" }} aria-labelledby="muscles-today">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 id="muscles-today" className="text-3xl" style={{ color: MUSCLE }}>Muscles worked today</h2>
-        <p className="text-muted">Tap a muscle to see what works it</p>
-      </div>
+    <section aria-labelledby="muscles-today">
+      <h2 id="muscles-today" className="text-2xl" style={{ color: MUSCLE }}>Muscles worked today</h2>
+      <p className="text-sm text-muted">Tap a muscle to see what works it</p>
 
-      <div className="mt-4 grid gap-6 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:items-center">
+      <div className="mt-3 grid gap-4">
         <div className="px-frame relative bg-night-900/70" style={{ "--frame": "var(--color-night-700)" }}>
           <canvas
             ref={canvasRef}
@@ -155,11 +154,11 @@ function MuscleMap({ exercises }) {
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerLeave={() => setHovered(null)}
-            className="block h-[300px] w-full cursor-grab touch-pan-y sm:h-[380px]"
+            className="block h-[300px] w-full cursor-grab touch-pan-y sm:h-[340px]"
             style={{ imageRendering: "pixelated" }}
           />
           {status !== "ready" && (
-            <p role="status" className="absolute inset-x-0 top-0 flex h-[300px] items-center justify-center text-lg text-muted sm:h-[380px]">
+            <p role="status" className="absolute inset-x-0 top-0 flex h-[300px] items-center justify-center text-lg text-muted sm:h-[340px]">
               {status === "loading" ? "Loading the muscle map…" : "Couldn't load the muscle map."}
             </p>
           )}

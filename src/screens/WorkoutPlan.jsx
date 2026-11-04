@@ -5,7 +5,6 @@ import PixelIcon from "../components/PixelIcon";
 import { ICONS } from "../icons";
 import { getCurrentPlan, localToday, logWorkout, validationMessage } from "../api";
 import { celebrate } from "../rewards";
-import { MUSCLE_LABELS } from "../muscles/labels";
 
 // three.js and the body model load only when a plan day is shown
 const MuscleMap = lazy(() => import("../components/MuscleMap"));
@@ -44,34 +43,29 @@ function usePlan(userId) {
   return { ...state, reload: () => setAttempt((n) => n + 1) };
 }
 
-// One exercise in three columns: what it works on the left, the exercise in the middle, the dose on the right.
 function Exercise({ exercise }) {
   const [open, setOpen] = useState(false);
   const color = GROUP_COLOR[exercise.group] ?? BLUE;
-  const muscles = (exercise.primary_muscles ?? []).map((m) => MUSCLE_LABELS[m] ?? m);
   return (
-    <li className="grid gap-x-5 gap-y-1 border-t-[3px] border-night-700 py-3 first:border-t-0 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-baseline">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm sm:block">
-        <span className="px-frame inline-block px-1.5 uppercase tracking-wider" style={{ "--frame": color, color }}>{exercise.group}</span>
-        {muscles.length > 0 && <p className="text-muted sm:mt-1.5">{muscles.join(" · ")}</p>}
-      </div>
-      <div className="min-w-0">
+    <li className="border-t-[3px] border-night-700 py-3 first:border-t-0">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <p className="text-lg">{exercise.name}</p>
-        <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
-          <span>{exercise.level}</span>·<span>{exercise.equipment || "no equipment"}</span>
-          {exercise.instructions?.length > 0 && (
-            <button type="button" onClick={() => setOpen((o) => !o)} className="px-focus text-cyan hover:underline" aria-expanded={open}>
-              {open ? "Hide how-to" : "How to"}
-            </button>
-          )}
-        </p>
-        {open && (
-          <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
-            {exercise.instructions.map((step, i) => <li key={i}>{step}</li>)}
-          </ol>
-        )}
+        <p className="text-lg text-cyan">{exercise.dose}</p>
       </div>
-      <p className="text-lg text-cyan sm:text-right">{exercise.dose}</p>
+      <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
+        <span className="px-frame px-1.5 uppercase tracking-wider" style={{ "--frame": color, color }}>{exercise.group}</span>
+        <span>{exercise.level}</span>·<span>{exercise.equipment || "no equipment"}</span>
+        {exercise.instructions?.length > 0 && (
+          <button type="button" onClick={() => setOpen((o) => !o)} className="px-focus ml-auto text-cyan hover:underline" aria-expanded={open}>
+            {open ? "Hide how-to" : "How to"}
+          </button>
+        )}
+      </p>
+      {open && (
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
+          {exercise.instructions.map((step, i) => <li key={i}>{step}</li>)}
+        </ol>
+      )}
     </li>
   );
 }
@@ -134,7 +128,8 @@ function RecoveryCard({ recovery, isToday }) {
   );
 }
 
-function DayCard({ day, busy, onLog, delay = 0, isToday = false }) {
+// aside: shown in a left column beside the day (today's muscle map); below it on narrow screens
+function DayCard({ day, busy, onLog, delay = 0, isToday = false, aside = null }) {
   const status = day.status ? STATUS[day.status] : null;
   return (
     <motion.section
@@ -145,22 +140,27 @@ function DayCard({ day, busy, onLog, delay = 0, isToday = false }) {
       style={{ "--frame": status ? status.color : "var(--color-night-600)" }}
       aria-labelledby={`plan-day-title-${day.day}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id={`plan-day-title-${day.day}`} className="text-3xl" style={{ color: BLUE }}>
-          {isToday ? <><span className="text-cyan">Today</span> · Day {day.day}</> : `Day ${day.day}`}
-        </h2>
-        {status ? (
-          <p style={{ color: status.color }}>
-            {status.label}{day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}
-          </p>
-        ) : (
-          <p className="text-muted">
-            {day.scheduled_on ? `${weekdayName(day.scheduled_on)} · ` : ""}
-            {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"}
-          </p>
-        )}
+      <div className={aside ? "grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]" : ""}>
+        {aside && <div className="order-last lg:order-first lg:border-r-[3px] lg:border-night-700 lg:pr-8">{aside}</div>}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id={`plan-day-title-${day.day}`} className="text-3xl" style={{ color: BLUE }}>
+              {isToday ? <><span className="text-cyan">Today</span> · Day {day.day}</> : `Day ${day.day}`}
+            </h2>
+            {status ? (
+              <p style={{ color: status.color }}>
+                {status.label}{day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}
+              </p>
+            ) : (
+              <p className="text-muted">
+                {day.scheduled_on ? `${weekdayName(day.scheduled_on)} · ` : ""}
+                {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"}
+              </p>
+            )}
+          </div>
+          <DayBody day={day} busy={busy} onLog={onLog} />
+        </div>
       </div>
-      <DayBody day={day} busy={busy} onLog={onLog} />
     </motion.section>
   );
 }
@@ -311,13 +311,18 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
           )}
           {todayDay && (
             <div id="plan-today" className="mt-8 scroll-mt-6">
-              <DayCard day={todayDay} busy={busy} onLog={log} isToday />
+              <DayCard
+                day={todayDay}
+                busy={busy}
+                onLog={log}
+                isToday
+                aside={
+                  <Suspense fallback={<p role="status" className="text-lg text-muted">Loading the muscle map…</p>}>
+                    <MuscleMap exercises={todayDay.exercises} />
+                  </Suspense>
+                }
+              />
             </div>
-          )}
-          {todayDay && (
-            <Suspense fallback={<p role="status" className="mt-8 text-lg text-muted">Loading the muscle map…</p>}>
-              <MuscleMap exercises={todayDay.exercises} />
-            </Suspense>
           )}
           {otherDays.length > 0 && (
             <section className="mt-10" aria-labelledby="plan-other-days">
