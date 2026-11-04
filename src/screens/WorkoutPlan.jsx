@@ -67,7 +67,7 @@ function Exercise({ exercise }) {
   );
 }
 
-function WeekStrip({ schedule, days, today }) {
+function WeekStrip({ schedule, days, today, onSelect }) {
   const byDay = Object.fromEntries(days.map((d) => [d.day, d]));
   return (
     <ol className="mt-8 grid grid-cols-7 gap-1.5 sm:gap-3" aria-label="This week's training and recovery days">
@@ -86,7 +86,7 @@ function WeekStrip({ schedule, days, today }) {
         return (
           <li key={entry.date}>
             {entry.day ? (
-              <a href={`#plan-day-${entry.day}`} aria-label={`${weekdayName(entry.date)}: ${label}${status ? `, ${status.label}` : ""}`}
+              <a href={`#plan-day-${entry.day}`} onClick={(event) => { event.preventDefault(); onSelect(entry.day); }} aria-label={`${weekdayName(entry.date)}: ${label}${status ? `, ${status.label}` : ""}`}
                  aria-current={isToday ? "date" : undefined}
                  className="px-frame px-focus block bg-night-800/90 px-1 py-2 text-center hover:bg-night-700"
                  style={{ "--frame": isToday ? "var(--color-cyan)" : color }}>
@@ -125,7 +125,7 @@ function RecoveryCard({ recovery, isToday }) {
   );
 }
 
-function DayCard({ day, busy, onLog, delay }) {
+function DayCard({ day, busy, onLog, delay = 0, isToday = false }) {
   const status = day.status ? STATUS[day.status] : null;
   return (
     <motion.section
@@ -134,10 +134,12 @@ function DayCard({ day, busy, onLog, delay }) {
       transition={{ type: "spring", stiffness: 200, damping: 24, delay }}
       className="px-frame bg-night-800/90 p-5 sm:p-6"
       style={{ "--frame": status ? status.color : "var(--color-night-600)" }}
-      aria-labelledby={`plan-day-${day.day}`}
+      aria-labelledby={`plan-day-title-${day.day}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id={`plan-day-${day.day}`} className="text-3xl" style={{ color: BLUE }}>Day {day.day}</h2>
+        <h2 id={`plan-day-title-${day.day}`} className="text-3xl" style={{ color: BLUE }}>
+          {isToday ? <><span className="text-cyan">Today</span> · Day {day.day}</> : `Day ${day.day}`}
+        </h2>
         {status ? (
           <p style={{ color: status.color }}>
             {status.label}{day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}
@@ -174,12 +176,49 @@ function DayCard({ day, busy, onLog, delay }) {
   );
 }
 
+// Another plan day, folded to one line: when it's planned or how it went. Opening it shows the full
+// card, e.g. to do a different day's workout today.
+function DayRow({ day, open, onToggle, busy, onLog }) {
+  const status = day.status ? STATUS[day.status] : null;
+  const when = status
+    ? `${status.label}${day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}`
+    : day.scheduled_on ? weekdayName(day.scheduled_on) : "Not scheduled";
+  return (
+    <li id={`plan-day-${day.day}`} className="scroll-mt-6">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="px-frame px-focus flex w-full flex-wrap items-center gap-x-4 gap-y-1 bg-night-800/90 px-5 py-3 text-left text-lg hover:bg-night-700"
+        style={{ "--frame": status ? status.color : "var(--color-night-600)" }}
+      >
+        <span className="text-2xl" style={{ color: BLUE }}>Day {day.day}</span>
+        <span style={{ color: status ? status.color : undefined }} className={status ? "" : "text-muted"}>{when}</span>
+        <span className="ml-auto text-muted">
+          {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"} {open ? "▲" : "▼"}
+        </span>
+      </button>
+      {open && <div className="mt-3"><DayCard day={day} busy={busy} onLog={onLog} /></div>}
+    </li>
+  );
+}
+
 function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
   const { status, plan, error, reload } = usePlan(userId);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
   const today = localToday();
   const restToday = plan?.schedule?.find((entry) => entry.date === today)?.kind === "recovery";
+  // Only today's plan day is shown in full; the others fold into one-line rows.
+  const todayNumber = plan?.schedule?.find((entry) => entry.date === today)?.day ?? null;
+  const todayDay = plan?.days.find((day) => day.day === todayNumber);
+  const otherDays = plan?.days.filter((day) => day.day !== todayNumber) ?? [];
+  const [openDay, setOpenDay] = useState(null);
+  function selectDay(number) {
+    if (number !== todayNumber) setOpenDay(number);
+    const target = number === todayNumber ? "plan-today" : `plan-day-${number}`;
+    requestAnimationFrame(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 
   async function log(day, completion, anchor) {
     setBusy(true);
@@ -243,14 +282,27 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
               </span>
             </p>
           )}
-          {plan.schedule && <WeekStrip schedule={plan.schedule} days={plan.days} today={today} />}
+          {plan.schedule && <WeekStrip schedule={plan.schedule} days={plan.days} today={today} onSelect={selectDay} />}
           {plan.recovery && restToday && <RecoveryCard recovery={plan.recovery} isToday />}
           {message && (
             <p role={message.ok ? "status" : "alert"} className={`mt-6 text-lg ${message.ok ? "text-activity" : "text-nutrition"}`}>{message.text}</p>
           )}
-          <div className="mt-8 grid gap-6 lg:grid-cols-2">
-            {plan.days.map((day, i) => <DayCard key={day.day} day={day} busy={busy} onLog={log} delay={0.05 * i} />)}
-          </div>
+          {todayDay && (
+            <div id="plan-today" className="mt-8 scroll-mt-6">
+              <DayCard day={todayDay} busy={busy} onLog={log} isToday />
+            </div>
+          )}
+          {otherDays.length > 0 && (
+            <section className="mt-10" aria-labelledby="plan-other-days">
+              <h2 id="plan-other-days" className="text-2xl">{todayDay ? "Rest of the week" : "This week's plan days"}</h2>
+              <ul className="mt-4 space-y-3">
+                {otherDays.map((day) => (
+                  <DayRow key={day.day} day={day} busy={busy} onLog={log} open={openDay === day.day}
+                          onToggle={() => setOpenDay((current) => (current === day.day ? null : day.day))} />
+                ))}
+              </ul>
+            </section>
+          )}
           {plan.recovery && !restToday && <RecoveryCard recovery={plan.recovery} />}
           <p className="mt-10 text-center text-sm text-muted">
             Plans adapt every Monday: finish your plan days and the next week steps up; miss them and it gets lighter.
