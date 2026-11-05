@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import DashboardHeader from "../components/DashboardHeader";
+import WorkoutWhatIf from "../components/WorkoutWhatIf";
 import { getForecasts } from "../api";
 
 const SERIES = [
@@ -205,6 +206,8 @@ function Forecast({ userId, profile, onNavigate, onEditProfile, onLogout }) {
                   : null} />
             ))}
           </div>
+
+          {data.workout_scenarios && <WorkoutWhatIf scenarios={data.workout_scenarios} />}
 
           {healthRows.length > 0 && (
             <section className="mt-12">
