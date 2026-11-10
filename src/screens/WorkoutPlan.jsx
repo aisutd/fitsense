@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import DashboardHeader from "../components/DashboardHeader";
 import PixelIcon from "../components/PixelIcon";
 import { ICONS } from "../icons";
-import { getCurrentPlan, localToday, logWorkout, validationMessage } from "../api";
+import { getCurrentPlan, localToday, logWorkout, swapPlanDay, validationMessage } from "../api";
 import { celebrate } from "../rewards";
 
 // three.js and the body model load only when a plan day is shown
@@ -43,7 +43,11 @@ function usePlan(userId) {
   return { ...state, reload: () => setAttempt((n) => n + 1) };
 }
 
-function Exercise({ exercise }) {
+// Equipment that can be "not here today" (bodyweight can't).
+const SWAPPABLE = (equipment) => equipment && equipment !== "body only";
+const equipmentLabel = (equipment) => (equipment === "other" ? "special equipment" : equipment);
+
+function Exercise({ exercise, onSwap, busy }) {
   const [open, setOpen] = useState(false);
   const color = GROUP_COLOR[exercise.group] ?? BLUE;
   return (
@@ -55,8 +59,15 @@ function Exercise({ exercise }) {
       <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
         <span className="px-frame px-1.5 uppercase tracking-wider" style={{ "--frame": color, color }}>{exercise.group}</span>
         <span>{exercise.level}</span>·<span>{exercise.equipment || "no equipment"}</span>
+        {onSwap && (
+          <button type="button" disabled={busy} onClick={() => onSwap({ exercises: [exercise.name] })}
+                  className="px-focus ml-auto text-gold hover:underline disabled:opacity-50"
+                  aria-label={`Swap ${exercise.name} for a similar exercise today`}>
+            ⇄ Swap
+          </button>
+        )}
         {exercise.instructions?.length > 0 && (
-          <button type="button" onClick={() => setOpen((o) => !o)} className="px-focus ml-auto text-cyan hover:underline" aria-expanded={open}>
+          <button type="button" onClick={() => setOpen((o) => !o)} className={`px-focus text-cyan hover:underline ${onSwap ? "" : "ml-auto"}`} aria-expanded={open}>
             {open ? "Hide how-to" : "How to"}
           </button>
         )}
@@ -128,7 +139,42 @@ function RecoveryCard({ recovery, isToday }) {
   );
 }
 
-function DayCard({ day, busy, onLog, delay = 0, isToday = false }) {
+// "Can't do it as planned today?": swap the day's exercises for what's available.
+function SwapPanel({ day, busy, onSwap }) {
+  const [open, setOpen] = useState(false);
+  const missing = [...new Set(day.exercises.map((e) => e.equipment).filter(SWAPPABLE))];
+  return (
+    <div className="mt-4 border-t-[3px] border-night-700 pt-4">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+              className="px-focus text-lg text-gold hover:underline">
+        Can't do it as planned today? {open ? "▲" : "▼"}
+      </button>
+      {open && (
+        <div className="mt-3">
+          <p className="text-sm text-muted">
+            Swaps today's exercises for similar ones you can do, keeping your sets and reps. Only this week changes.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {missing.map((equipment) => (
+              <button key={equipment} type="button" disabled={busy} onClick={() => onSwap(day, { without: [equipment] })}
+                      className="px-frame px-focus bg-night-900/80 px-3 py-1.5 text-lg text-ink hover:text-gold disabled:opacity-50 [--frame:var(--color-gold)]">
+                No {equipmentLabel(equipment)} today
+              </button>
+            ))}
+            {[["home", "Training at home"], ["outdoors", "Training outdoors"]].map(([location, label]) => (
+              <button key={location} type="button" disabled={busy} onClick={() => onSwap(day, { location })}
+                      className="px-frame px-focus bg-night-900/80 px-3 py-1.5 text-lg text-ink hover:text-gold disabled:opacity-50 [--frame:var(--color-gold)]">
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DayCard({ day, busy, onLog, onSwap, delay = 0, isToday = false }) {
   const status = day.status ? STATUS[day.status] : null;
   return (
     <motion.section
@@ -155,9 +201,13 @@ function DayCard({ day, busy, onLog, delay = 0, isToday = false }) {
         )}
       </div>
       <ul className="mt-3">
-        {day.exercises.map((exercise) => <Exercise key={exercise.name} exercise={exercise} />)}
+        {day.exercises.map((exercise) => (
+          <Exercise key={exercise.name} exercise={exercise} busy={busy}
+                    onSwap={!status && onSwap ? (change) => onSwap(day, change) : null} />
+        ))}
         {day.exercises.length === 0 && <li className="py-2 text-muted">No matching exercises for this day.</li>}
       </ul>
+      {!status && onSwap && day.exercises.length > 0 && <SwapPanel day={day} busy={busy} onSwap={onSwap} />}
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t-[3px] border-night-700 pt-4">
         <span className="mr-auto text-sm text-muted">{status ? "Change today's log:" : "Log it for today:"}</span>
         {["completed", "partial", "skipped"].map((s) => (
@@ -174,6 +224,12 @@ function DayCard({ day, busy, onLog, delay = 0, isToday = false }) {
             {s === "completed" ? "Done ✓" : STATUS[s].label}
           </button>
         ))}
+        {/* Skipping because the gym was closed or the equipment was missing doesn't count against next week. */}
+        <button type="button" disabled={busy} onClick={(event) => onLog(day, "skipped", event.currentTarget, "no_equipment")}
+                className="px-frame px-focus px-3 py-1.5 text-lg text-muted transition-colors hover:text-ink disabled:opacity-50"
+                title="Doesn't count as a missed workout when next week's plan is made">
+          Skipped: gym closed / no equipment
+        </button>
       </div>
     </motion.section>
   );
@@ -181,7 +237,7 @@ function DayCard({ day, busy, onLog, delay = 0, isToday = false }) {
 
 // Another plan day, folded to one line: when it's planned or how it went. Opening it shows the full
 // card, e.g. to do a different day's workout today.
-function DayRow({ day, open, onToggle, busy, onLog }) {
+function DayRow({ day, open, onToggle, busy, onLog, onSwap }) {
   const status = day.status ? STATUS[day.status] : null;
   const when = status
     ? `${status.label}${day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}`
@@ -201,7 +257,7 @@ function DayRow({ day, open, onToggle, busy, onLog }) {
           {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"} {open ? "▲" : "▼"}
         </span>
       </button>
-      {open && <div className="mt-3"><DayCard day={day} busy={busy} onLog={onLog} /></div>}
+      {open && <div className="mt-3"><DayCard day={day} busy={busy} onLog={onLog} onSwap={onSwap} /></div>}
     </li>
   );
 }
@@ -223,19 +279,48 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
     requestAnimationFrame(() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
-  async function log(day, completion, anchor) {
+  // Plan days swapped this visit, so logging them tells next week's plan it was a swap, not a miss.
+  const [swappedDays, setSwappedDays] = useState(() => new Set());
+
+  async function log(day, completion, anchor, skipReason = null) {
     setBusy(true);
     setMessage(null);
     try {
-      const result = await logWorkout(userId, today, completion, null, { planId: plan.plan_id, dayNumber: day.day });
+      const result = await logWorkout(userId, today, completion, null, {
+        planId: plan.plan_id, dayNumber: day.day,
+        swapped: completion !== "skipped" && swappedDays.has(day.day), skipReason,
+      });
       celebrate(result, anchor);
       const reward = result?.rewards;
       const extras = [reward?.points_awarded && `+${reward.points_awarded} XP`, reward?.fitcoins_awarded && `+${reward.fitcoins_awarded} FitCoins`]
         .filter(Boolean).join(" ");
-      setMessage({ ok: true, text: `Day ${day.day}: ${STATUS[completion].label.toLowerCase()}.${extras ? ` ${extras}!` : ""}` });
+      const note = skipReason ? " It won't count against next week's plan." : "";
+      setMessage({ ok: true, text: `Day ${day.day}: ${STATUS[completion].label.toLowerCase()}.${note}${extras ? ` ${extras}!` : ""}` });
       reload();
     } catch (err) {
       setMessage({ ok: false, text: validationMessage(err, "Couldn't save that. Please try again.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function swap(day, change) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await swapPlanDay(userId, day.day, change);
+      const done = result.swaps.filter((s) => s.to);
+      const kept = result.swaps.filter((s) => !s.to);
+      if (done.length) setSwappedDays((current) => new Set(current).add(day.day));
+      setMessage({
+        ok: done.length > 0,
+        text: done.length
+          ? `Swapped for today: ${done.map((s) => `${s.from} → ${s.to}`).join(", ")}.${kept.length ? ` No alternative for ${kept.map((s) => s.from).join(", ")}.` : ""}`
+          : result.swaps.length ? `No alternative for ${kept.map((s) => s.from).join(", ")}, so it's unchanged.` : "Nothing needed swapping: everything on that day still works.",
+      });
+      reload();
+    } catch (err) {
+      setMessage({ ok: false, text: validationMessage(err, "Couldn't swap that. Please try again.") });
     } finally {
       setBusy(false);
     }
@@ -281,7 +366,13 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
               <span className="text-gold">Adapted:</span> {plan.adaptation.text}{" "}
               <span className="text-muted">
                 (last week {Math.round(plan.adaptation.last_week_completion * 100)}% done
-                {plan.days_per_week !== plan.planned_per_profile ? `; ${plan.days_per_week} of your ${plan.planned_per_profile} days this week` : ""})
+                {plan.adaptation.last_week_completion_counted != null && plan.adaptation.last_week_completion_counted !== plan.adaptation.last_week_completion
+                  ? `, ${Math.round(plan.adaptation.last_week_completion_counted * 100)}% of the days you could train`
+                  : ""}
+                {plan.days_per_week !== plan.planned_per_profile ? `; ${plan.days_per_week} of your ${plan.planned_per_profile} days this week` : ""}
+                {plan.adaptation.decided_by === "xgboost"
+                  ? `; chosen by the adaptation model${plan.adaptation.rule !== plan.adaptation.change ? `, the rule said ${plan.adaptation.rule}` : ""}`
+                  : ""})
               </span>
             </p>
           )}
@@ -292,7 +383,7 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
           )}
           {todayDay && (
             <div id="plan-today" className="mt-8 scroll-mt-6">
-              <DayCard day={todayDay} busy={busy} onLog={log} isToday />
+              <DayCard day={todayDay} busy={busy} onLog={log} onSwap={swap} isToday />
             </div>
           )}
           {todayDay && (
@@ -305,7 +396,7 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
               <h2 id="plan-other-days" className="text-2xl">{todayDay ? "Rest of the week" : "This week's plan days"}</h2>
               <ul className="mt-4 space-y-3">
                 {otherDays.map((day) => (
-                  <DayRow key={day.day} day={day} busy={busy} onLog={log} open={openDay === day.day}
+                  <DayRow key={day.day} day={day} busy={busy} onLog={log} onSwap={swap} open={openDay === day.day}
                           onToggle={() => setOpenDay((current) => (current === day.day ? null : day.day))} />
                 ))}
               </ul>
@@ -314,6 +405,7 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
           {plan.recovery && !restToday && <RecoveryCard recovery={plan.recovery} />}
           <p className="mt-10 text-center text-sm text-muted">
             Plans adapt every Monday: finish your plan days and the next week steps up; miss them and it gets lighter.
+            A day skipped because the gym was closed or the equipment was missing doesn't count as missed, and you can swap exercises for the day when something's different.
             Every week keeps at least one recovery day; resting doesn't count against your HealthScore as long as the rest of the plan still fits in the week.
             Workouts logged on the HealthScore page count toward your next open plan day.{" "}
             <button type="button" onClick={onEditProfile} className="px-focus text-cyan hover:underline">Change goal or equipment</button>

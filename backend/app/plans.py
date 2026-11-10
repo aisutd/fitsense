@@ -42,6 +42,12 @@ def ranker():
     return model_module("exercise_ranker").load_model()   # None until a model is trained
 
 
+@lru_cache
+def adapt_model():
+    """XGBoost adaptation model (adaptive_week_two.py), or None: the swap-aware rule decides."""
+    return model_module("adaptive_week_two").load_model()
+
+
 def _profile(client, user_id: str) -> dict:
     rows = (client.table("profiles").select("*, user_preferences(available_equipment), user_gamification(total_xp)")
             .eq("user_id", user_id).limit(1).execute().data)
@@ -73,9 +79,17 @@ def saved_plans(client, user_id: str) -> list[tuple[str, dict]]:
     return sorted(plans.items(), key=lambda pair: pair[1]["week_start"])
 
 
+LOG_COLUMNS = "workout_log_id, plan_id, day_number, completion_status, workout_date"
+
+
 def _plan_logs(client, user_id: str) -> list[dict]:
-    return (client.table("workout_logs").select("workout_log_id, plan_id, day_number, completion_status, workout_date")
-            .eq("user_id", user_id).execute().data)
+    """The player's workout logs, with skip_reason and swapped once backend/sql/009 has been run."""
+    def read(columns):
+        return client.table("workout_logs").select(columns).eq("user_id", user_id).execute().data
+    try:
+        return read(LOG_COLUMNS + ", skip_reason, swapped")
+    except Exception:   # columns not added yet: every skip counts, as before
+        return read(LOG_COLUMNS)
 
 
 def link_logs(saved: list[tuple[str, dict]], logs: list[dict]) -> list[dict]:
@@ -128,7 +142,7 @@ def current_plan(client, user_id: str, today: date) -> dict:
 
     current = next(((pid, p) for pid, p in saved if p["week_start"] == start), None)
     if current is None:
-        plan = wp.plan_for_week(profile, exercises(), saved, logs, start, ranker())
+        plan = wp.plan_for_week(profile, exercises(), saved, logs, start, ranker(), adapt_model())
         ids, _ = wp.sync_exercises(client, exercises())
         plan_row, exercise_rows = wp.plan_rows(user_id, profile, plan, ids)
         client.table("workout_plans").insert(plan_row).execute()
@@ -142,9 +156,20 @@ def current_plan(client, user_id: str, today: date) -> dict:
     adaptation = None
     if previous:
         prev_logs = [log for log in logs if log["plan_id"] == previous[0]]
-        change, _ = wp.adaptation(profile, previous[1], prev_logs)
-        adaptation = {"change": change, "text": ADAPTATION_TEXT[change],
-                      "last_week_completion": round(wp.completion_rate(previous[1], prev_logs), 2)}
+        details = wp.adaptation_details(profile, previous[1], prev_logs, adapt_model())
+        change = details["decision"]
+        text = ADAPTATION_TEXT[change]
+        if details["equipment_skips"]:
+            blocked = details["equipment_skips"]
+            text += (f" Day {', '.join(map(str, blocked))} {'was' if len(blocked) == 1 else 'were'} skipped for "
+                     "equipment or location, so it didn't count against you.")
+        adaptation = {"change": change, "text": text,
+                      "last_week_completion": round(wp.completion_rate(previous[1], prev_logs), 2),
+                      # leaving out days blocked by equipment or location
+                      "last_week_completion_counted": round(details["completion"], 2),
+                      "decided_by": details["source"], "rule": details["rule"],
+                      "rule_before_swaps": details["original_rule"],
+                      "equipment_skips": details["equipment_skips"], "swapped_days": details["swapped"]}
 
     statuses: dict[int, dict] = {}
     for log in logs:
@@ -185,4 +210,31 @@ def current_plan(client, user_id: str, today: date) -> dict:
                      for e in schedule],
         "recovery": {"walk": routine["walk"], "exercises": [exercise_out(item) for item in routine["stretches"]]},
         "done": sum(1 for d in days if d["status"] == "completed"),
+    }
+
+
+def swap_day(client, user_id: str, today: date, day: int, conditions: dict, force_names=(), rest_of_week=False) -> dict:
+    """Same-day swaps on this week's plan (adaptive_week_two.swap_days), saved to plan_exercises.
+
+    conditions: {"location", "equipment", "without"} for today only - the profile isn't changed.
+    Each exercise on the day that no longer fits is replaced by the closest allowed one (same
+    muscle group and movement, the sets and reps already reached carried over). Returns the swaps
+    and the updated plan.
+    """
+    wp, awt = model_module("weekly_plan"), model_module("adaptive_week_two")
+    current_plan(client, user_id, today)               # make sure this week's plan exists
+    profile = _profile(client, user_id)
+    start = wp.week_start(today)
+    plan_id, plan = next((pid, p) for pid, p in saved_plans(client, user_id) if p["week_start"] == start)
+    if day > plan["days"]:
+        raise HTTPException(status_code=422, detail=f"This week's plan has {plan['days']} days")
+    days = set(range(day, plan["days"] + 1)) if rest_of_week else {day}
+    _, swaps = awt.swap_days(profile, plan, days, conditions, exercises(), force_names, ranker())
+    saved = awt.save_swaps(client, plan_id, swaps, exercises())
+    return {
+        "swaps": [{"day": s["day"], "group": s["group"], "from": s["old"]["name"],
+                   "to": s["new"]["name"] if s["new"] else None, "dose": s["new_dose"] or s["old_dose"],
+                   "reason": s["reason"]} for s in swaps],
+        "saved": saved,
+        "plan": current_plan(client, user_id, today),
     }

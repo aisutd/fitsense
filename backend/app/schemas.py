@@ -194,6 +194,15 @@ class CompletionStatus(str, Enum):
     skipped = "skipped"
 
 
+class SkipReason(str, Enum):
+    """Why a plan day was skipped. no_equipment and location aren't counted as missed workouts."""
+    no_equipment = "no_equipment"
+    location = "location"
+    no_time = "no_time"
+    injury = "injury"
+    other = "other"
+
+
 class WorkoutLogIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -202,6 +211,32 @@ class WorkoutLogIn(BaseModel):
     duration_minutes: int | None = Field(default=None, ge=0, le=600)
     plan_id: UUID | None = None
     day_number: int | None = Field(default=None, ge=1, le=7, description="Which day of the plan this workout was")
+    skip_reason: SkipReason | None = Field(default=None, description="Only for skipped workouts (needs backend/sql/009)")
+    swapped: bool = Field(default=False, description="Done with same-day swaps (needs backend/sql/009)")
+
+    @model_validator(mode="after")
+    def _reason_only_when_skipped(self):
+        if self.skip_reason is not None and self.completion_status != CompletionStatus.skipped:
+            raise ValueError("skip_reason is only for skipped workouts")
+        return self
+
+
+class PlanSwapIn(BaseModel):
+    """What's different today. Exercises on that plan day that no longer fit are swapped."""
+    model_config = ConfigDict(extra="forbid")
+
+    day: int = Field(ge=1, le=7, description="Plan day to change")
+    location: WorkoutLocation | None = Field(default=None, description="Where you're training today, if not the usual place")
+    equipment: list[str] | None = Field(default=None, max_length=30, description="Equipment you have today (at home)")
+    without: list[str] = Field(default_factory=list, max_length=30, description="Equipment that isn't available today")
+    exercises: list[str] = Field(default_factory=list, max_length=20, description="Exercises to swap even if they're allowed")
+    rest_of_week: bool = Field(default=False, description="Apply the same change to the remaining days of this week")
+
+    @model_validator(mode="after")
+    def _something_changed(self):
+        if self.location is None and self.equipment is None and not self.without and not self.exercises:
+            raise ValueError("Say what changed today: location, equipment, without or exercises")
+        return self
 
 
 class SleepLogIn(BaseModel):

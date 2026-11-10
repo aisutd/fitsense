@@ -53,7 +53,12 @@ def get_day(user_id: UUID, log_date: date, supabase: Client = Depends(get_supaba
 @router.post("/logs/{user_id}/workouts")
 def log_workout(user_id: UUID, body: WorkoutLogIn, supabase: Client = Depends(get_supabase)):
     """Record a workout (completed, partial or skipped)."""
-    row = {"user_id": str(user_id), **body.model_dump(mode="json")}
+    row = {"user_id": str(user_id), **body.model_dump(mode="json", exclude={"skip_reason", "swapped"})}
+    # Only sent when used, so plain logs keep working before backend/sql/009 has been run.
+    if body.skip_reason is not None:
+        row["skip_reason"] = body.skip_reason.value
+    if body.swapped:
+        row["swapped"] = True
     if body.plan_id is None:
         # count it toward that week's workout plan (its next open day), so the plan can adapt
         try:

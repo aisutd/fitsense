@@ -54,15 +54,22 @@ export const equipAvatar = (userId, avatarId) => request("PUT", `/gamification/$
 
 // Logging: each one feeds a HealthScore category.
 // plan: { planId, dayNumber } to log a specific workout-plan day; otherwise the backend links the
-// workout to that week's next open plan day.
+// workout to that week's next open plan day. plan.swapped: done with same-day swaps;
+// plan.skipReason: why it was skipped ("no_equipment" and "location" don't count as missed).
 export const logWorkout = (userId, workoutDate, completionStatus, durationMinutes, plan) =>
   request("POST", `/logs/${userId}/workouts`, {
     workout_date: workoutDate,
     completion_status: completionStatus,
     duration_minutes: durationMinutes ?? null,
     ...(plan ? { plan_id: plan.planId, day_number: plan.dayNumber } : {}),
+    ...(plan?.swapped ? { swapped: true } : {}),
+    ...(plan?.skipReason ? { skip_reason: plan.skipReason } : {}),
   });
 export const getCurrentPlan = (userId) => request("GET", `/plans/${userId}/current?today=${localToday()}`);
+// Same-day swaps: change: { without: ["barbell"] } | { location: "home" | "outdoors" } | { exercises: [name] }.
+// Returns { swaps: [{ from, to, dose, reason }], plan }.
+export const swapPlanDay = (userId, day, change) =>
+  request("POST", `/plans/${userId}/swap?today=${localToday()}`, { day, ...change });
 export const logSleep = (userId, date, hoursSlept) =>
   request("PUT", `/logs/${userId}/sleep/${date}`, { hours_slept: hoursSlept });
 export const logActivity = (userId, date, steps) => request("PUT", `/logs/${userId}/activity/${date}`, { steps });

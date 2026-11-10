@@ -10,6 +10,13 @@ week 2 on, the plan is rebuilt from last week's plan and the workout_logs linked
 - at least REPEAT_RATE: same dose
 - below that: one more day than they did (up to workout_frequency), one step down in dose
 
+The week's decision comes from adaptive_week_two.py:
+- Swap-aware: a day skipped because the equipment or location wasn't available (workout_logs
+  skip_reason 'no_equipment' or 'location') isn't counted as missed, and its exercises are kept.
+- If models/adaptive_week_two.json exists (python adaptive_week_two.py), XGBoost picks between
+  the rule's choice and one step either side; without it, the swap-aware rule decides alone.
+Each new plan records the decision in plan["adaptation"], which format_plan prints.
+
 On top of that, an exercise that was only on skipped days is swapped for the next-ranked one in
 its group, and one on a partial or skipped day steps down. Doses never leave the guideline range.
 
@@ -19,6 +26,7 @@ training days on the calendar with recovery days between them where the week all
 an easy walk and a few beginner stretches (recovery_routine()).
 
     python weekly_plan.py weekly [--dry-run]   # next plan for every user without one this week
+    python weekly_plan.py swap <user_id> --without barbell [--save]   # same-day swaps (see adaptive_week_two.py)
 
 Run `weekly` once a week (for example from cron on Monday), after progress_forecast.py weekly.
 """
@@ -29,6 +37,7 @@ from pathlib import Path
 import sys
 import uuid
 
+import adaptive_week_two
 import exercise_ranker
 from exercise_ranker import fetch_all
 from progress_forecast import to_date, week_start
@@ -38,8 +47,9 @@ _spec = importlib.util.spec_from_file_location("recommender", BASE_DIR / "Fitsen
 recommender = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(recommender)
 
-PROGRESS_RATE = 0.9
-REPEAT_RATE = 0.6
+# The thresholds live in adaptive_week_two.py so the rule and the model use the same numbers.
+PROGRESS_RATE = adaptive_week_two.PROGRESS_RATE
+REPEAT_RATE = adaptive_week_two.REPEAT_RATE
 REP_STEP = 2
 CARDIO_STEP = 5  # minutes
 STATUS_RANK = {"skipped": 0, "partial": 1, "completed": 2}
@@ -142,23 +152,34 @@ def completion_rate(plan, logs):
     return done / plan["days"]
 
 
-def adaptation(profile, previous, logs):
+def adaptation_details(profile, previous, logs, adapt_model=None):
+    """How next week is decided: {"decision", "days", "rule", "original_rule", "source", ...}.
+
+    "rule" is the swap-aware rule, "original_rule" the rule before swaps were taken into account,
+    and "source" says whether the XGBoost adaptation model or the rule made the decision. Days
+    never go above training_days(profile), so every week keeps a recovery day.
+    """
+    state = adaptive_week_two.state_from_plan(profile, previous, logs)
+    return adaptive_week_two.decide(state, adapt_model)
+
+
+def adaptation(profile, previous, logs, adapt_model=None):
     """("progress" | "same dose" | "reduce", days next week) from last week's completion."""
-    statuses = day_statuses(previous, logs)
-    rate = completion_rate(previous, logs)
-    most = training_days(profile)
-    if rate >= PROGRESS_RATE and "skipped" not in statuses.values():
-        return "progress", min(most, previous["days"] + 1)
-    if rate >= REPEAT_RATE:
-        return "same dose", min(most, previous["days"])
-    did = sum(1 for s in statuses.values() if s != "skipped")
-    return "reduce", max(1, min(most, did + 1))
+    details = adaptation_details(profile, previous, logs, adapt_model)
+    return details["decision"], details["days"]
 
 
-def next_week(profile, exercises, previous, logs, model=None):
-    """The plan for the week after previous, adapted to the logs linked to previous."""
+def next_week(profile, exercises, previous, logs, model=None, adapt_model=None):
+    """The plan for the week after previous, adapted to the logs linked to previous.
+
+    model is the exercise ranker (exercise order); adapt_model is the XGBoost adaptation model
+    (progress / same dose / reduce). Either can be None, and the rules take over.
+    """
+    details = adaptation_details(profile, previous, logs, adapt_model)
+    change, days = details["decision"], details["days"]
     statuses = day_statuses(previous, logs)
-    change, days = adaptation(profile, previous, logs)
+    for day in details["equipment_skips"]:
+        statuses[day] = "completed"  # blocked by equipment, not by the user: keep its exercises
     trend = {"progress": step_up, "same dose": None, "reduce": step_down}[change]
 
     ranked = ranked_groups(profile, exercises, model)
@@ -192,7 +213,9 @@ def next_week(profile, exercises, previous, logs, model=None):
         while len(rotation) < recommender.PER_GROUP and (exercise := next(spare, None)):
             rotation.append(exercise)
         rotations[group] = rotation
-    return assemble(profile, previous["week_start"] + timedelta(days=7), days, rotations, doses)
+    plan = assemble(profile, previous["week_start"] + timedelta(days=7), days, rotations, doses)
+    plan["adaptation"] = details
+    return plan
 
 
 def spread(count, slots):
@@ -266,12 +289,29 @@ def dose_text(profile, item):
     return f"{item['sets']} {'set' if item['sets'] == 1 else 'sets'} x {item['reps']} reps"
 
 
+def adaptation_text(details):
+    """One line on how this week was decided, e.g. "Adapted: progress (XGBoost; rule said same dose)"."""
+    source = "XGBoost adaptation model" if details["source"] == "xgboost" else "swap-aware rule"
+    notes = []
+    if details["source"] == "xgboost" and details["rule"] != details["decision"]:
+        notes.append(f"rule said {details['rule']}")
+    if details["original_rule"] != details["rule"]:
+        notes.append(f"before swap-awareness: {details['original_rule']}")
+    if details["equipment_skips"]:
+        notes.append("equipment-blocked day " + ", ".join(str(d) for d in sorted(details["equipment_skips"]))
+                     + " not counted as missed")
+    return (f"Adapted from last week: {details['decision']} ({source}"
+            + ("; " + "; ".join(notes) if notes else "") + ")")
+
+
 def format_plan(profile, plan, exercises=None):
     lines = [f"\n========== FIT-SENSE WEEK OF {plan['week_start']} ==========",
              f"{profile['name']} | Age {profile['age']} | {profile['points']} points",
              f"Level: {profile['fitness_level']} | Goal: {profile['fitness_goal']} | "
              f"Location: {profile['workout_location']} | {plan['days']} {'day' if plan['days'] == 1 else 'days'} this week",
              f"Saved equipment: {', '.join(profile['equipment']) or 'none'}"]
+    if plan.get("adaptation"):
+        lines.append(adaptation_text(plan["adaptation"]))
     for day in range(1, plan["days"] + 1):
         lines.append(f"\n--- Day {day} ---")
         for item in plan["items"]:
@@ -364,27 +404,44 @@ def load_plans(client, exercises, user_id=None):
     return result
 
 
-def plan_for_week(profile, exercises, saved, logs, start, model=None):
+LOG_COLUMNS = "workout_log_id, user_id, plan_id, day_number, completion_status"
+SWAP_LOG_COLUMNS = ", skip_reason, swapped"  # optional columns, see adaptive_week_two.py
+
+
+def fetch_logs(client, user_id=None):
+    """workout_logs rows, with skip_reason and swapped when those optional columns exist."""
+    try:
+        return fetch_all(client, "workout_logs", LOG_COLUMNS + SWAP_LOG_COLUMNS, "workout_log_id", user_id)
+    except Exception:
+        return fetch_all(client, "workout_logs", LOG_COLUMNS, "workout_log_id", user_id)
+
+
+def plan_for_week(profile, exercises, saved, logs, start, model=None, adapt_model=None):
     """This week's plan from the user's saved plans: week 1 if none, else adapted from the latest."""
     earlier = [(plan_id, plan) for plan_id, plan in saved if plan["week_start"] < start]
     if not earlier:
         return first_week(profile, exercises, start, model)
     plan_id, previous = earlier[-1]
-    plan = next_week(profile, exercises, previous, [log for log in logs if log["plan_id"] == plan_id], model)
+    plan = next_week(profile, exercises, previous, [log for log in logs if log["plan_id"] == plan_id],
+                     model, adapt_model)
     return {**plan, "week_start": start}
 
 
-def current_plan(client, profile, exercises, today=None, model=None):
-    """This week's saved plan for one user, building and saving it first if there is none."""
+def current_plan(client, profile, exercises, today=None, model=None, adapt_model="saved"):
+    """This week's saved plan for one user, building and saving it first if there is none.
+
+    adapt_model "saved" loads models/adaptive_week_two.json if it exists; pass None for rules only.
+    """
     today = today or datetime.now(timezone.utc).date()
     start = week_start(today)
     saved = load_plans(client, exercises, profile["user_id"]).get(profile["user_id"], [])
     for _, plan in saved:
         if plan["week_start"] == start:
             return plan
-    logs = fetch_all(client, "workout_logs", "workout_log_id, plan_id, day_number, completion_status",
-                     "workout_log_id", profile["user_id"])
-    plan = plan_for_week(profile, exercises, saved, logs, start, model)
+    if adapt_model == "saved":
+        adapt_model = adaptive_week_two.load_model()
+    logs = fetch_logs(client, profile["user_id"])
+    plan = plan_for_week(profile, exercises, saved, logs, start, model, adapt_model)
     ids, _ = sync_exercises(client, exercises)
     plan_row, exercise_rows = plan_rows(profile["user_id"], profile, plan, ids)
     client.table("workout_plans").insert(plan_row).execute()
@@ -398,10 +455,10 @@ def run_weekly(client, today=None, dry_run=False):
     start = week_start(today)
     exercises = recommender.load_exercises()
     model = exercise_ranker.load_model()
+    adapt_model = adaptive_week_two.load_model()
     saved = load_plans(client, exercises)
     logs = {}
-    for log in fetch_all(client, "workout_logs", "workout_log_id, user_id, plan_id, day_number, completion_status",
-                         "workout_log_id"):
+    for log in fetch_logs(client):
         logs.setdefault(log["user_id"], []).append(log)
     ids, _ = sync_exercises(client, exercises, dry_run)
     plans, items = [], []
@@ -411,7 +468,8 @@ def run_weekly(client, today=None, dry_run=False):
         user_plans = saved.get(profile["user_id"], [])
         if any(plan["week_start"] == start for _, plan in user_plans):
             continue
-        plan = plan_for_week(profile, exercises, user_plans, logs.get(profile["user_id"], []), start, model)
+        plan = plan_for_week(profile, exercises, user_plans, logs.get(profile["user_id"], []), start, model,
+                             adapt_model)
         plan_row, exercise_rows = plan_rows(profile["user_id"], profile, plan, ids)
         plans.append(plan_row)
         items += exercise_rows
@@ -426,8 +484,11 @@ def main():
         dry_run = "--dry-run" in sys.argv
         plans = run_weekly(recommender.supabase_client(), dry_run=dry_run)
         print(f"{'Would save' if dry_run else 'Saved'} {len(plans)} plans to workout_plans.")
+    elif sys.argv[1:2] == ["swap"]:
+        adaptive_week_two.main_swap(sys.argv[2:])
     else:
-        print("Usage: python weekly_plan.py weekly [--dry-run]")
+        print("Usage: python weekly_plan.py weekly [--dry-run]\n"
+              "       python weekly_plan.py swap <user_id> --without barbell [--save]")
 
 
 if __name__ == "__main__":
