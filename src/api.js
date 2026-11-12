@@ -51,6 +51,8 @@ export const getLeague = (userId) => request("GET", `/gamification/${userId}/lea
 export const getAvatarInventory = (userId) => request("GET", `/gamification/${userId}/avatars`);
 export const purchaseAvatar = (userId, avatarId) => request("POST", `/gamification/${userId}/avatars/${avatarId}/purchase`);
 export const equipAvatar = (userId, avatarId) => request("PUT", `/gamification/${userId}/avatars/${avatarId}/equip`);
+// body: "male" | "female" - which pixel avatar the league banner shows
+export const setAvatarBody = (userId, body) => request("PUT", `/gamification/${userId}/avatar-body`, { body });
 
 // Logging: each one feeds a HealthScore category.
 // plan: { planId, dayNumber } to log a specific workout-plan day; otherwise the backend links the
