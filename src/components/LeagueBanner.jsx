@@ -93,15 +93,16 @@ function LeagueBanner({ league, player }) {
         </div>
         <h3 className="m-0 truncate text-4xl leading-[0.95]" style={{ ...TITLE, color: L.light, textShadow: `0 0 14px ${L.color}, 3px 3px 0 ${L.deep}` }}>{L.name}</h3>
         <p className="m-0 truncate text-xl leading-none">{player?.name || "You"}</p>
-        <div className="mt-1 grid grid-cols-2 gap-2">
+        {/* stacked on phones, so the level fits spelled out */}
+        <div className="mt-1 grid gap-2 sm:grid-cols-2">
           <div className="px-2.5 py-1.5" style={{ background: "rgba(6,10,21,0.72)", boxShadow: `inset 0 0 0 2px ${L.color}` }}>
             <p className="m-0 text-sm tracking-wider" style={{ color: L.light }}>LEAGUE SCORE</p>
             <p className="m-0 text-3xl leading-none" style={{ ...TITLE, textShadow: `0 0 10px ${L.color}` }}>{score ?? "—"}</p>
           </div>
           <div className="px-2.5 py-1.5" style={{ background: "rgba(6,10,21,0.72)", boxShadow: `inset 0 0 0 2px ${level.color}` }}>
             <p className="m-0 text-sm tracking-wider" style={{ color: level.color }}>LEVEL</p>
-            <p className="m-0 text-3xl leading-none" title={level.label} style={{ ...TITLE, textShadow: `0 0 10px ${level.color}` }}>
-              {level.short}<span className="sr-only"> ({level.label})</span>
+            <p className="m-0 text-xl leading-none sm:text-3xl" style={{ ...TITLE, textShadow: `0 0 10px ${level.color}` }}>
+              {level.label.toUpperCase()}
             </p>
           </div>
         </div>
