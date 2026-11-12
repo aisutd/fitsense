@@ -1,9 +1,11 @@
 from datetime import date, datetime, timedelta, timezone
 from math import ceil
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from postgrest.exceptions import APIError
+from pydantic import BaseModel
 from supabase import Client
 
 from app.database import get_supabase
@@ -167,11 +169,12 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
             background.add_task(_refresh_standings, supabase, season_start, season_end, today)
 
         tier = int(game.get("league_tier") or 0)
-        rows = health_repo.all_rows(lambda: supabase.table("league_season_scores").select("user_id, hidden_score")
+        rows = health_repo.all_rows(lambda: supabase.table("league_season_scores").select("user_id, hidden_score, health_score")
                                     .eq("season_start", season_start.isoformat()).eq("tier", tier)
                                     .order("hidden_score", desc=True))
         members = len(rows)
         position = next((i + 1 for i, row in enumerate(rows) if row["user_id"] == uid), None)
+        mine = rows[position - 1] if position else None
         movement = "needs a HealthScore"
         if position is not None:
             if members < 5:
@@ -186,15 +189,14 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
                     movement = "holding position"
 
         top = [row["user_id"] for row in rows[:5]]
-        names = {}
-        if top:
-            profiles = {r["user_id"]: r for r in supabase.table("profiles").select("user_id, name").in_("user_id", top).execute().data}
-            accounts = {r["user_id"]: r for r in supabase.table("accounts").select("user_id, username").in_("user_id", top).execute().data}
-            games = {r["user_id"]: r for r in supabase.table("user_gamification").select("user_id, equipped_avatar").in_("user_id", top).execute().data}
-            names = {u: (_display_name(profiles.get(u), accounts.get(u), u), (games.get(u) or {}).get("equipped_avatar") or "starter")
-                     for u in top}
+        wanted = list(dict.fromkeys([*top, uid]))      # the podium plus the current player, for the banner
+        profiles = {r["user_id"]: r for r in supabase.table("profiles").select("user_id, name, fitness_level").in_("user_id", wanted).execute().data}
+        accounts = {r["user_id"]: r for r in supabase.table("accounts").select("user_id, username").in_("user_id", wanted).execute().data}
+        games = {r["user_id"]: r for r in supabase.table("user_gamification").select("user_id, equipped_avatar").in_("user_id", top).execute().data} if top else {}
         podium = [
-            {"place": i + 1, "user_id": u, "name": names[u][0], "avatar_id": names[u][1], "is_current_user": u == uid}
+            {"place": i + 1, "user_id": u, "name": _display_name(profiles.get(u), accounts.get(u), u),
+             "avatar_id": (games.get(u) or {}).get("equipped_avatar") or "starter",
+             "fitness_level": (profiles.get(u) or {}).get("fitness_level"), "is_current_user": u == uid}
             for i, u in enumerate(top)
         ]
         return {
@@ -206,6 +208,13 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
             "league": {
                 "tier": tier, "name": LEAGUES[tier], "position": position,
                 "members": members, "movement": movement,
+                # shown on the banner as the league score; the ranking score itself stays private
+                "season_health_score": round(float(mine["health_score"])) if mine and mine.get("health_score") is not None else None,
+            },
+            "player": {
+                "name": _display_name(profiles.get(uid), accounts.get(uid), uid),
+                "fitness_level": (profiles.get(uid) or {}).get("fitness_level"),
+                "avatar_body": game.get("avatar_body") or "male",   # column from backend/sql/010
             },
             "podium": podium,
         }
@@ -297,6 +306,24 @@ def equip_avatar(user_id: UUID, avatar_id: str, supabase: Client = Depends(get_s
         raise
     except APIError as e:
         raise HTTPException(status_code=502, detail=f"Failed to equip avatar: {e.message}")
+
+
+class AvatarBodyIn(BaseModel):
+    body: Literal["male", "female"]
+
+
+@router.put("/{user_id}/avatar-body")
+def set_avatar_body(user_id: UUID, payload: AvatarBodyIn, supabase: Client = Depends(get_supabase)):
+    """Which body the pixel avatar uses (male / female). Needs backend/sql/010_avatar_body.sql."""
+    uid = str(user_id)
+    try:
+        _ensure_game_row(supabase, uid)
+        supabase.table("user_gamification").update({"avatar_body": payload.body}).eq("user_id", uid).execute()
+        return {"avatar_body": payload.body}
+    except HTTPException:
+        raise
+    except APIError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to save avatar body (has backend/sql/010_avatar_body.sql been run?): {e.message}")
 
 
 @router.post("/{user_id}/points", response_model=AwardPointsOut)

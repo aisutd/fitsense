@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { equipAvatar, getAvatarInventory, getGamification, getLeague, purchaseAvatar } from "../api";
+import { equipAvatar, getAvatarInventory, getGamification, getLeague, purchaseAvatar, setAvatarBody } from "../api";
+import LeagueBanner from "./LeagueBanner";
+import { LEAGUE_STYLES, fitnessLevel } from "../game/leagues";
 
 const EMPTY = { league: null, inventory: null, status: null };
 const STREAK_LABELS = { checkin: "Daily check-in", workout: "Workout days in a row", daily_goals: "Daily goals", sleep: "Sleep" };
@@ -28,6 +30,24 @@ function GamificationPanel({ userId, refreshKey = 0 }) {
   const [message, setMessage] = useState(null);
   const previousCoins = useRef(null);
   const [reward, setReward] = useState(null);
+  const [bodyChoice, setBodyChoice] = useState(null);   // shown straight away while it saves
+  const [savingBody, setSavingBody] = useState(false);
+  const body = bodyChoice || data.league?.player?.avatar_body || "male";
+
+  async function chooseBody(option) {
+    const before = body;
+    setBodyChoice(option);
+    setSavingBody(true);
+    setMessage(null);
+    try {
+      await setAvatarBody(userId, option);
+    } catch (error) {
+      setBodyChoice(before);
+      setMessage({ ok: false, text: error.message });
+    } finally {
+      setSavingBody(false);
+    }
+  }
 
   async function reload(showReward = false) {
     setState("loading");
@@ -105,22 +125,25 @@ function GamificationPanel({ userId, refreshKey = 0 }) {
         <div className="mt-6 grid items-start gap-6 lg:grid-cols-[0.95fr_1.35fr]">
           <div className="grid gap-6">
             <section className="px-frame bg-night-800/90 p-5 sm:p-6 [--frame:var(--color-cyan)]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm uppercase tracking-wider text-muted">Four-week season · week {league.season.week}/{league.season.weeks}</p>
-                  <h3 className="mt-2 text-3xl font-bold text-cyan">{currentTier.name}</h3>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-muted">Your place</p>
-                  <p className="text-3xl font-bold">{currentTier.position ? `#${currentTier.position}` : "—"}<span className="text-base text-muted">/{currentTier.members}</span></p>
-                </div>
+              <p className="mb-4 text-sm uppercase tracking-wider text-muted">Four-week season · week {league.season.week}/{league.season.weeks}</p>
+              <LeagueBanner league={currentTier} player={{ ...league.player, avatar_body: body }} />
+              <div className="mt-5 flex flex-wrap items-center gap-2 text-sm" role="group" aria-label="Avatar body">
+                <span className="text-muted">Avatar:</span>
+                {["male", "female"].map((option) => (
+                  <button
+                    key={option} type="button" aria-pressed={body === option} disabled={savingBody}
+                    onClick={() => chooseBody(option)}
+                    className={`px-focus border px-3 py-1 capitalize ${body === option ? "border-cyan bg-cyan/10 text-cyan" : "border-night-600 text-muted hover:border-cyan"}`}
+                  >{option}</button>
+                ))}
               </div>
               <p className="mt-3 text-muted">{currentTier.movement === "promotion zone" ? "You're on track to move up." : currentTier.movement === "demotion zone" ? "Keep your momentum to hold your league." : currentTier.movement === "building a league" ? "More players are needed before leagues can move." : currentTier.movement === "needs a HealthScore" ? "Log some activity to enter this season's standings." : "You're holding your current league position."}</p>
               <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-night-700 pt-4 text-sm text-muted">
                 <span>{league.season.start} — {league.season.end}</span>
                 <span>Top 20% move up · bottom 20% move down</span>
               </div>
-              <p className="mt-3 text-xs text-muted">Standings reflect HealthScore and consistency; the exact scoring formula stays behind the scenes.</p>
+              <p className="mt-3 text-xs text-muted">League score is your season HealthScore. Standings also reward consistency; the exact formula stays behind the scenes.</p>
+              <p className="mt-2 text-xs text-muted">Each promotion colours your avatar's kit and unlocks gear: {LEAGUE_STYLES.map((s) => s.item).join(" → ")}.</p>
             </section>
 
             <section className="px-frame bg-night-800/90 p-5 [--frame:var(--color-sleep)]">
@@ -154,6 +177,11 @@ function GamificationPanel({ userId, refreshKey = 0 }) {
                   <span className={`w-9 text-center text-2xl font-bold ${player.place <= 3 ? "text-gold" : "text-muted"}`}>{["①", "②", "③", "④", "⑤"][player.place - 1]}</span>
                   <span className="text-3xl" aria-hidden="true">{inventory.avatars.find((avatar) => avatar.id === player.avatar_id)?.emoji || "🧑‍🚀"}</span>
                   <span className="min-w-0 flex-1 truncate text-xl">{player.name}{player.is_current_user ? " (you)" : ""}</span>
+                  {player.fitness_level && (
+                    <span className="text-sm" title={fitnessLevel(player.fitness_level).label} style={{ color: fitnessLevel(player.fitness_level).color }}>
+                      {fitnessLevel(player.fitness_level).short}
+                    </span>
+                  )}
                   <span className="text-xs uppercase tracking-wider text-muted">{player.place === 1 ? "Champion" : `#${player.place}`}</span>
                 </li>
               ))}
