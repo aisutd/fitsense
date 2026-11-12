@@ -11,6 +11,8 @@ import { ICONS } from "../icons";
 // grows), so the highlight stays on the pixel grid. Each section is marked
 // with its category's pixel icon: on touch screens always, with a "+" badge
 // (an "x" while open); with a mouse only while lit, so the ring stays clean.
+// Other pages pass their own four categories (`order`, each with an `icon`) and
+// say what a click does (`action`, e.g. "Open"); pickers then aren't pop-ups.
 
 const N = 46; // grid size in cells
 const C = (N - 1) / 2;
@@ -89,18 +91,24 @@ const MARKER_ICONS = {
   activity: outlined(ICONS.runner),
   nutrition: outlined(ICONS.apple),
 };
+const outlinedIcons = new WeakMap();
+function markerIcon(category) {
+  if (!category.icon) return MARKER_ICONS[category.key];
+  if (!outlinedIcons.has(category.icon)) outlinedIcons.set(category.icon, outlined(category.icon));
+  return outlinedIcons.get(category.icon);
+}
 const BADGE_COLORS = { o: OUTLINE, w: "#e8edff" };
 const PLUS_BADGE = { colors: BADGE_COLORS, art: ["..ooo..", "..owo..", "ooowooo", "owwwwwo", "ooowooo", "..owo..", "..ooo.."] };
 const CLOSE_BADGE = { colors: BADGE_COLORS, art: ["oo...oo", "owo.owo", ".owowo.", "..owo..", ".owowo.", "owo.owo", "oo...oo"] };
 // icon width in % of the ring (one icon pixel is a quarter of a ring cell)
 const MARKER_WIDTH = `${(14 / 4 / N) * 100}%`;
 
-function ScoreRing({ scores, categories, children, className = "", onPick, picked }) {
+function ScoreRing({ scores, categories, children, className = "", onPick, picked, order = QUADRANT_ORDER, action = "Log" }) {
   const [hovered, setHovered] = useState(null);
   const lit = (key) => key === hovered || key === picked;
   const layers = useMemo(() => {
     const byKey = Object.fromEntries(categories.map((c) => [c.key, c]));
-    return QUADRANT_ORDER.map((key, q) => {
+    return order.map((key, q) => {
       const cat = byKey[key];
       const lit = (scores[key].score ?? 0) / 100;
       return {
@@ -113,7 +121,7 @@ function ScoreRing({ scores, categories, children, className = "", onPick, picke
         })),
       };
     });
-  }, [scores, categories]);
+  }, [scores, categories, order]);
 
   return (
     <div className={`relative aspect-square ${className}`}>
@@ -179,9 +187,9 @@ function ScoreRing({ scores, categories, children, className = "", onPick, picke
             <button
               key={layer.key}
               type="button"
-              data-quicklog={layer.key}
-              aria-label={`Log ${cat.label.toLowerCase()}`}
-              aria-haspopup="dialog"
+              data-quicklog={action === "Log" ? layer.key : undefined}
+              aria-label={`${action} ${cat.label.toLowerCase()}`}
+              aria-haspopup={action === "Log" ? "dialog" : undefined}
               aria-expanded={open}
               onClick={(event) => onPick(open ? null : layer.key, event.currentTarget)}
               onPointerEnter={() => setHovered(layer.key)}
@@ -197,7 +205,7 @@ function ScoreRing({ scores, categories, children, className = "", onPick, picke
                 className="ring-marker absolute -translate-x-1/2 -translate-y-1/2"
                 style={{ ...MARKER_SPOTS[q], width: MARKER_WIDTH }}
               >
-                <PixelIcon icon={MARKER_ICONS[layer.key]} className="h-auto w-full" />
+                <PixelIcon icon={markerIcon(cat)} className="h-auto w-full" />
                 <PixelIcon icon={open ? CLOSE_BADGE : PLUS_BADGE} className="ring-marker-badge absolute -bottom-[18%] -right-[22%] h-auto w-1/2" />
               </span>
             </button>

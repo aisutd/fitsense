@@ -51,6 +51,9 @@ def _season_start(today: date) -> date:
 
 STANDINGS_TTL = timedelta(minutes=10)   # league standings are recomputed at most this often
 UPSERT_CHUNK = 500
+LOOKUP_CHUNK = 100   # user ids per in_() lookup
+PROMOTION_SHARE = 0.2   # top and bottom fifth of a league move up / down when the season closes
+MIN_MOVING_LEAGUE = 5   # smaller leagues hold their tiers
 
 
 def _active_days(logs: dict) -> int:
@@ -109,6 +112,18 @@ def _ensure_game_row(supabase: Client, user_id: str) -> dict:
 
 def _display_name(profile: dict | None, account: dict | None, user_id: str) -> str:
     return (profile or {}).get("name") or (account or {}).get("username") or f"Player {user_id[:4]}"
+
+
+def _names_and_avatars(supabase: Client, ids: list[str]) -> dict[str, tuple[str, str]]:
+    """{user_id: (display name, equipped avatar)}, looked up in batches."""
+    profiles, accounts, games = {}, {}, {}
+    for i in range(0, len(ids), LOOKUP_CHUNK):
+        batch = ids[i:i + LOOKUP_CHUNK]
+        profiles |= {r["user_id"]: r for r in supabase.table("profiles").select("user_id, name").in_("user_id", batch).execute().data}
+        accounts |= {r["user_id"]: r for r in supabase.table("accounts").select("user_id, username").in_("user_id", batch).execute().data}
+        games |= {r["user_id"]: r for r in supabase.table("user_gamification").select("user_id, equipped_avatar").in_("user_id", batch).execute().data}
+    return {u: (_display_name(profiles.get(u), accounts.get(u), u), (games.get(u) or {}).get("equipped_avatar") or "starter")
+            for u in ids}
 
 
 @router.get("/actions", response_model=list[PointActionInfo])
@@ -172,31 +187,26 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
                                     .order("hidden_score", desc=True))
         members = len(rows)
         position = next((i + 1 for i, row in enumerate(rows) if row["user_id"] == uid), None)
+        moving = max(1, ceil(members * PROMOTION_SHARE)) if members >= MIN_MOVING_LEAGUE else 0
+
+        def zone(place: int) -> str | None:
+            if moving and tier < len(LEAGUES) - 1 and place <= moving:
+                return "promotion"
+            if moving and tier > 0 and place > members - moving:
+                return "demotion"
+            return None
+
         movement = "needs a HealthScore"
         if position is not None:
-            if members < 5:
-                movement = "building a league"
-            else:
-                moving = max(1, ceil(members * 0.2))
-                if tier < len(LEAGUES) - 1 and position <= moving:
-                    movement = "promotion zone"
-                elif tier > 0 and position > members - moving:
-                    movement = "demotion zone"
-                else:
-                    movement = "holding position"
+            movement = ("building a league" if not moving else
+                        {"promotion": "promotion zone", "demotion": "demotion zone"}.get(zone(position), "holding position"))
 
-        top = [row["user_id"] for row in rows[:5]]
-        names = {}
-        if top:
-            profiles = {r["user_id"]: r for r in supabase.table("profiles").select("user_id, name").in_("user_id", top).execute().data}
-            accounts = {r["user_id"]: r for r in supabase.table("accounts").select("user_id, username").in_("user_id", top).execute().data}
-            games = {r["user_id"]: r for r in supabase.table("user_gamification").select("user_id, equipped_avatar").in_("user_id", top).execute().data}
-            names = {u: (_display_name(profiles.get(u), accounts.get(u), u), (games.get(u) or {}).get("equipped_avatar") or "starter")
-                     for u in top}
-        podium = [
-            {"place": i + 1, "user_id": u, "name": names[u][0], "avatar_id": names[u][1], "is_current_user": u == uid}
-            for i, u in enumerate(top)
-        ]
+        # The whole league, by place: names and avatars only; the ranking score stays server-side.
+        ids = [row["user_id"] for row in rows]
+        names = _names_and_avatars(supabase, ids)
+        standings = [{"place": i + 1, "name": names[u][0], "avatar_id": names[u][1], "is_current_user": u == uid,
+                      "zone": zone(i + 1)} for i, u in enumerate(ids)]
+        podium = [{**row, "user_id": ids[row["place"] - 1]} for row in standings[:5]]
         return {
             "season": {
                 "start": season_start.isoformat(), "end": season_end.isoformat(),
@@ -208,6 +218,9 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
                 "members": members, "movement": movement,
             },
             "podium": podium,
+            "standings": standings,
+            "leagues": LEAGUES,
+            "promotion_share": PROMOTION_SHARE,
         }
     except HTTPException:
         raise
