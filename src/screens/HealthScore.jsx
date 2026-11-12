@@ -7,7 +7,7 @@ import ScoreRing from "../components/ScoreRing";
 import LogPanel from "../components/LogPanel";
 import QuickLog from "../components/QuickLog";
 import { ICONS, levelIcon } from "../icons";
-import { CATEGORIES, scoreLabel, toViewModel } from "../data/healthScore";
+import { CATEGORIES, toViewModel } from "../data/healthScore";
 import { getHealthScore, localToday } from "../api";
 import DateSwitcher from "../components/DateSwitcher";
 import DayLog from "../components/DayLog";
@@ -323,14 +323,6 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
               </p>
               <p className="text-base text-muted sm:text-xl">/100</p>
               <p className="text-base sm:mt-1 sm:text-xl">HealthScore</p>
-              <div className="my-2 flex w-20 items-center gap-2 sm:my-3 sm:w-28" aria-hidden="true">
-                <span className="h-[2px] flex-1 bg-night-500" />
-                <span className="h-[6px] w-[6px] bg-cyan" />
-                <span className="h-[2px] flex-1 bg-night-500" />
-              </div>
-              <p className="text-sm font-semibold text-activity sm:text-lg">
-                {status === "loading" ? "Loading..." : scoreLabel(overall)}
-              </p>
             </div>
           </ScoreRing>
           {quick?.from === "ring" && quickLog(quick.key, "ring")}
