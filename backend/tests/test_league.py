@@ -84,3 +84,14 @@ def test_avatar_body(client, league):
     assert client.get(f"/gamification/{league['Ana']}/league").json()["player"]["avatar_body"] == "female"
     assert client.put(f"/gamification/{league['Ana']}/avatar-body", json={"body": "robot"}).status_code == 422
     assert client.put(f"/gamification/{uuid4()}/avatar-body", json={"body": "male"}).status_code == 404
+
+
+def test_the_whole_league_is_on_the_board(client, league):
+    board = client.get(f"/gamification/{league['Cy']}/league").json()
+    standings = board["standings"]
+    assert [row["name"] for row in standings] == ["Ana", "Ben", "Cy", "Di", "Ed", "Flo"]
+    assert [row["is_current_user"] for row in standings] == [False, False, True, False, False, False]
+    # the top fifth, rounded up (2 of 6), is promoted; nobody drops out of Bronze, the lowest league
+    assert [row["zone"] for row in standings] == ["promotion", "promotion", None, None, None, None]
+    assert not any("score" in key for row in standings for key in row)   # the ranking score stays hidden
+    assert board["leagues"][0] == "Bronze" and board["podium"][0]["name"] == "Ana"

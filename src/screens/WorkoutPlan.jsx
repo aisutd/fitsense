@@ -174,7 +174,8 @@ function SwapPanel({ day, busy, onSwap }) {
   );
 }
 
-function DayCard({ day, busy, onLog, onSwap, delay = 0, isToday = false }) {
+// aside: shown in a left column beside the day (today's muscle map); below it on narrow screens
+function DayCard({ day, busy, onLog, onSwap, delay = 0, isToday = false, aside = null }) {
   const status = day.status ? STATUS[day.status] : null;
   return (
     <motion.section
@@ -185,21 +186,36 @@ function DayCard({ day, busy, onLog, onSwap, delay = 0, isToday = false }) {
       style={{ "--frame": status ? status.color : "var(--color-night-600)" }}
       aria-labelledby={`plan-day-title-${day.day}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id={`plan-day-title-${day.day}`} className="text-3xl" style={{ color: BLUE }}>
-          {isToday ? <><span className="text-cyan">Today</span> · Day {day.day}</> : `Day ${day.day}`}
-        </h2>
-        {status ? (
-          <p style={{ color: status.color }}>
-            {status.label}{day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}
-          </p>
-        ) : (
-          <p className="text-muted">
-            {day.scheduled_on ? `${weekdayName(day.scheduled_on)} · ` : ""}
-            {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"}
-          </p>
-        )}
+      <div className={aside ? "grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]" : ""}>
+        {aside && <div className="order-last lg:order-first lg:border-r-[3px] lg:border-night-700 lg:pr-8">{aside}</div>}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id={`plan-day-title-${day.day}`} className="text-3xl" style={{ color: BLUE }}>
+              {isToday ? <><span className="text-cyan">Today</span> · Day {day.day}</> : `Day ${day.day}`}
+            </h2>
+            {status ? (
+              <p style={{ color: status.color }}>
+                {status.label}{day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}
+              </p>
+            ) : (
+              <p className="text-muted">
+                {day.scheduled_on ? `${weekdayName(day.scheduled_on)} · ` : ""}
+                {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"}
+              </p>
+            )}
+          </div>
+          <DayBody day={day} busy={busy} onLog={onLog} onSwap={onSwap} />
+        </div>
       </div>
+    </motion.section>
+  );
+}
+
+// A plan day's exercises and its log buttons (inside today's card, or an opened row).
+function DayBody({ day, busy, onLog, onSwap }) {
+  const status = day.status ? STATUS[day.status] : null;   // swaps are offered only before a day is logged
+  return (
+    <>
       <ul className="mt-3">
         {day.exercises.map((exercise) => (
           <Exercise key={exercise.name} exercise={exercise} busy={busy}
@@ -209,7 +225,7 @@ function DayCard({ day, busy, onLog, onSwap, delay = 0, isToday = false }) {
       </ul>
       {!status && onSwap && day.exercises.length > 0 && <SwapPanel day={day} busy={busy} onSwap={onSwap} />}
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t-[3px] border-night-700 pt-4">
-        <span className="mr-auto text-sm text-muted">{status ? "Change today's log:" : "Log it for today:"}</span>
+        <span className="mr-auto text-sm text-muted">{day.status ? "Change today's log:" : "Log it for today:"}</span>
         {["completed", "partial", "skipped"].map((s) => (
           <button
             key={s}
@@ -231,25 +247,25 @@ function DayCard({ day, busy, onLog, onSwap, delay = 0, isToday = false }) {
           Skipped: gym closed / no equipment
         </button>
       </div>
-    </motion.section>
+    </>
   );
 }
 
-// Another plan day, folded to one line: when it's planned or how it went. Opening it shows the full
-// card, e.g. to do a different day's workout today.
+// Another plan day, folded to one line: when it's planned or how it went. Opening it unfolds the
+// exercises in the same box, e.g. to do a different day's workout today.
 function DayRow({ day, open, onToggle, busy, onLog, onSwap }) {
   const status = day.status ? STATUS[day.status] : null;
   const when = status
     ? `${status.label}${day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}`
     : day.scheduled_on ? weekdayName(day.scheduled_on) : "Not scheduled";
   return (
-    <li id={`plan-day-${day.day}`} className="scroll-mt-6">
+    <li id={`plan-day-${day.day}`} className="px-frame scroll-mt-6 bg-night-800/90"
+        style={{ "--frame": status ? status.color : "var(--color-night-600)" }}>
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="px-frame px-focus flex w-full flex-wrap items-center gap-x-4 gap-y-1 bg-night-800/90 px-5 py-3 text-left text-lg hover:bg-night-700"
-        style={{ "--frame": status ? status.color : "var(--color-night-600)" }}
+        className="px-focus flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-left text-lg hover:bg-night-700"
       >
         <span className="text-2xl" style={{ color: BLUE }}>Day {day.day}</span>
         <span style={{ color: status ? status.color : undefined }} className={status ? "" : "text-muted"}>{when}</span>
@@ -257,7 +273,11 @@ function DayRow({ day, open, onToggle, busy, onLog, onSwap }) {
           {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"} {open ? "▲" : "▼"}
         </span>
       </button>
-      {open && <div className="mt-3"><DayCard day={day} busy={busy} onLog={onLog} onSwap={onSwap} /></div>}
+      {open && (
+        <div className="border-t-[3px] border-night-700 px-5 pb-5 sm:px-6">
+          <DayBody day={day} busy={busy} onLog={onLog} onSwap={onSwap} />
+        </div>
+      )}
     </li>
   );
 }
@@ -383,13 +403,19 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
           )}
           {todayDay && (
             <div id="plan-today" className="mt-8 scroll-mt-6">
-              <DayCard day={todayDay} busy={busy} onLog={log} onSwap={swap} isToday />
+              <DayCard
+                day={todayDay}
+                busy={busy}
+                onLog={log}
+                onSwap={swap}
+                isToday
+                aside={
+                  <Suspense fallback={<p role="status" className="text-lg text-muted">Loading the muscle map…</p>}>
+                    <MuscleMap exercises={todayDay.exercises} />
+                  </Suspense>
+                }
+              />
             </div>
-          )}
-          {todayDay && (
-            <Suspense fallback={<p role="status" className="mt-8 text-lg text-muted">Loading the muscle map…</p>}>
-              <MuscleMap exercises={todayDay.exercises} />
-            </Suspense>
           )}
           {otherDays.length > 0 && (
             <section className="mt-10" aria-labelledby="plan-other-days">

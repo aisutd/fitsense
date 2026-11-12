@@ -5,6 +5,7 @@ function DashboardHeader({ activeTab, onTabChange, onLogout }) {
     { id: "health", label: "HealthScore" },
     { id: "plan", label: "Plan" },
     { id: "forecast", label: "Forecast" },
+    { id: "league", label: "League" },
   ];
 
   return (

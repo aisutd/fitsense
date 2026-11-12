@@ -97,11 +97,3 @@ export function toViewModel(result) {
     scores,
   };
 }
-
-export function scoreLabel(score) {
-  if (score == null) return "Start Logging!";
-  if (score >= 90) return "Legendary!";
-  if (score >= 80) return "Great Progress!";
-  if (score >= 65) return "Keep Going!";
-  return "Level Up Time!";
-}
