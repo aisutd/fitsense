@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import PixelIcon from "./PixelIcon";
-import { equipAvatar, getAvatarInventory, getGamification, getLeague, purchaseAvatar } from "../api";
+import LeagueBanner from "./LeagueBanner";
+import { equipAvatar, getAvatarInventory, getGamification, getLeague, purchaseAvatar, setAvatarBody } from "../api";
+import { LEAGUE_STYLES, fitnessLevel } from "../game/leagues";
 
 // The League tab: the season leaderboard front and center, then streaks, badges and the avatar shop,
 // and the ladder of league ranks at the bottom.
@@ -117,6 +119,11 @@ function Leaderboard({ league, avatars }) {
                   {player.name}
                   {player.is_current_user && <span className="px-frame ml-2 px-1.5 align-middle text-sm text-cyan [--frame:var(--color-cyan)]">YOU</span>}
                 </span>
+                {player.fitness_level && (
+                  <span className="shrink-0 text-sm" title={fitnessLevel(player.fitness_level).label} style={{ color: fitnessLevel(player.fitness_level).color }}>
+                    {fitnessLevel(player.fitness_level).short}
+                  </span>
+                )}
                 {zone && <span className="shrink-0 text-sm" style={{ color: zone.color }}>{zone.label}</span>}
               </div>
               {promotionLine && <ZoneLine color={ZONES.promotion.color} label="Promotion line" />}
@@ -181,6 +188,24 @@ function GamificationPanel({ userId }) {
   const [message, setMessage] = useState(null);
   const previousCoins = useRef(null);
   const [reward, setReward] = useState(null);
+  const [bodyChoice, setBodyChoice] = useState(null);   // shown straight away while it saves
+  const [savingBody, setSavingBody] = useState(false);
+  const body = bodyChoice || data.league?.player?.avatar_body || "male";
+
+  async function chooseBody(option) {
+    const before = body;
+    setBodyChoice(option);
+    setSavingBody(true);
+    setMessage(null);
+    try {
+      await setAvatarBody(userId, option);
+    } catch (error) {
+      setBodyChoice(before);
+      setMessage({ ok: false, text: error.message });
+    } finally {
+      setSavingBody(false);
+    }
+  }
 
   async function reload(showReward = false) {
     setState("loading");
@@ -255,6 +280,23 @@ function GamificationPanel({ userId }) {
 
       {league && inventory && (
         <>
+          <section className="mx-auto mt-8 max-w-3xl" aria-label="Your league banner">
+            <LeagueBanner league={league.league} player={{ ...league.player, avatar_body: body }} />
+            <div className="mt-5 flex flex-wrap items-center gap-2 text-sm" role="group" aria-label="Avatar body">
+              <span className="text-muted">Avatar:</span>
+              {["male", "female"].map((option) => (
+                <button
+                  key={option} type="button" aria-pressed={body === option} disabled={savingBody}
+                  onClick={() => chooseBody(option)}
+                  className={`px-focus border px-3 py-1 capitalize ${body === option ? "border-cyan bg-cyan/10 text-cyan" : "border-night-600 text-muted hover:border-cyan"}`}
+                >{option}</button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              League score is your season HealthScore. Each promotion colours your avatar's kit and unlocks gear: {LEAGUE_STYLES.map((s) => s.item).join(" → ")}.
+            </p>
+          </section>
+
           <Leaderboard league={league} avatars={inventory.avatars} />
 
           <div className="mt-10 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
