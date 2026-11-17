@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from supabase import Client
 
+from app import achievement_service
 from app.food import lexicon, parser
 from app.food.fdc import FdcClient, FdcError, Food, Portion, SearchHit, _words, description_confidence, rank_hits
 from app.food.portions import nutrients, to_grams, unit_options
@@ -378,7 +379,8 @@ def confirm(db: Client, catalog: Catalog, meal_id: str) -> dict:
     reward = award_action(db, meal["user_id"], PointAction.meal_logged, meal_id)
     logged_on = date.fromisoformat(str(meal["log_date"])[:10])
     reward, days = checkin(db, meal["user_id"], logged_on, reward)
-    return {**load_meal(db, catalog, meal_id), "rewards": reward, "checkin_streak": days}
+    unlocked = achievement_service.evaluate(db, meal["user_id"], "meal", logged_on, {"checkin_streak": days})
+    return {**load_meal(db, catalog, meal_id), "rewards": reward, "checkin_streak": days, "achievements": unlocked}
 
 
 def discard(db: Client, catalog: Catalog, meal_id: str) -> dict:

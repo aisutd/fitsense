@@ -25,6 +25,8 @@ UPSERT_KEYS = {
     "league_seasons": ("season_start",),
     "league_season_scores": ("season_start", "user_id"),
     "user_avatars": ("user_id", "avatar_id"),
+    "achievements": ("code",),
+    "user_achievements": ("user_id", "achievement_id"),
 }
 GENERATED_IDS = {
     "workout_logs": "workout_log_id",
@@ -212,6 +214,40 @@ class FakeRpc:
         }])
 
 
+class FakeAchievementRpc:
+    """In-memory award_achievement(): completes the achievement once and pays its XP and FitCoins."""
+
+    def __init__(self, db: "FakeSupabase", params: dict):
+        self.db = db
+        self.params = params
+
+    def execute(self):
+        p = self.params
+        user_id = p["p_user_id"]
+        if user_id not in self.db.tables.setdefault("profiles", {}):
+            raise APIError({"code": "23503", "message": "violates foreign key constraint"})
+        game = self.db.tables.setdefault("user_gamification", {})
+        row = game.setdefault(user_id, {"user_id": user_id})
+        for column, default in (("total_xp", 0), ("level", 1), ("fitcoins", 0)):   # the table's column defaults
+            row.setdefault(column, default)
+        previous = row["level"]
+        mine = self.db.tables.setdefault("user_achievements", {})
+        key = (user_id, p["p_achievement_id"])
+        existing = mine.get(key, {})
+        if existing.get("completed_at"):
+            return SimpleNamespace(data=[{"awarded": False, "new_total_xp": row["total_xp"], "new_level": row["level"],
+                                          "previous_level": previous, "fitcoins_balance": row["fitcoins"]}])
+        now = _now()
+        mine[key] = {**existing, "user_id": user_id, "achievement_id": p["p_achievement_id"],
+                     "current_value": existing.get("current_value", 1), "completed_at": now,
+                     "last_progress_at": now, "facts": p.get("p_facts")}
+        row["total_xp"] += p["p_xp"]
+        row["fitcoins"] += p["p_fitcoins"]
+        row["level"] = max(1, sum(1 for t in p["p_level_thresholds"] if t <= row["total_xp"]))
+        return SimpleNamespace(data=[{"awarded": True, "new_total_xp": row["total_xp"], "new_level": row["level"],
+                                      "previous_level": previous, "fitcoins_balance": row["fitcoins"]}])
+
+
 class FakeSearchRpc:
     """In-memory search_fdc_foods(): every word must start a word of the description (no typo matching)."""
 
@@ -241,6 +277,8 @@ class FakeSupabase:
     def rpc(self, name, params):
         if name == "search_fdc_foods":
             return FakeSearchRpc(self, params)
+        if name == "award_achievement":
+            return FakeAchievementRpc(self, params)
         if name == "finalize_league_season":
             return SimpleNamespace(execute=lambda: SimpleNamespace(data=False))
         assert name == "award_points"

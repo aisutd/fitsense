@@ -1,4 +1,5 @@
 // FitSense backend (FastAPI) client. Set VITE_API_URL in .env to point elsewhere.
+import { announce } from "./achievements";
 
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
@@ -25,6 +26,7 @@ async function request(method, path, body, signal) {
   }
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data?.detail);
+  if (Array.isArray(data?.achievements)) announce(data.achievements);   // the System has something to say
   return data;
 }
 
@@ -51,6 +53,9 @@ export const getLeague = (userId) => request("GET", `/gamification/${userId}/lea
 export const getAvatarInventory = (userId) => request("GET", `/gamification/${userId}/avatars`);
 export const purchaseAvatar = (userId, avatarId) => request("POST", `/gamification/${userId}/avatars/${avatarId}/purchase`);
 export const equipAvatar = (userId, avatarId) => request("PUT", `/gamification/${userId}/avatars/${avatarId}/equip`);
+// The System's achievements: { items, earned, total, by_rarity }. demo earns (or replays) Identity Crisis.
+export const getAchievements = (userId) => request("GET", `/gamification/${userId}/achievements`);
+export const demoAchievement = (userId) => request("POST", `/gamification/${userId}/achievements/demo`);
 // body: "male" | "female" - which pixel avatar the league banner shows
 export const setAvatarBody = (userId, body) => request("PUT", `/gamification/${userId}/avatar-body`, { body });
 

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from postgrest.exceptions import APIError
 from supabase import Client
 
+from app import achievement_service
 from app import healthscore_repo as repo
 from app import plans
 from app.database import get_supabase
@@ -71,7 +72,8 @@ def log_workout(user_id: UUID, body: WorkoutLogIn, supabase: Client = Depends(ge
     elif body.completion_status.value == "partial":
         reward = award_action(supabase, str(user_id), PointAction.workout_partial, saved["workout_log_id"])
     reward, days = checkin(supabase, str(user_id), body.workout_date, reward)
-    return {**saved, "rewards": reward, "streak": streak, "checkin_streak": days}
+    unlocked = achievement_service.evaluate(supabase, str(user_id), "workout", body.workout_date, {"checkin_streak": days})
+    return {**saved, "rewards": reward, "streak": streak, "checkin_streak": days, "achievements": unlocked}
 
 
 @router.put("/logs/{user_id}/sleep/{sleep_date}")
@@ -81,7 +83,8 @@ def log_sleep(user_id: UUID, sleep_date: date, body: SleepLogIn, supabase: Clien
     saved = _write("log sleep", lambda: supabase.table("sleep_logs").upsert(row, on_conflict="user_id,sleep_date").execute())
     reward = award_action(supabase, str(user_id), PointAction.sleep_logged, sleep_date.isoformat())
     reward, days = checkin(supabase, str(user_id), sleep_date + timedelta(days=1), reward)
-    return {**saved, "rewards": reward, "checkin_streak": days}
+    unlocked = achievement_service.evaluate(supabase, str(user_id), "sleep", sleep_date, {"checkin_streak": days})
+    return {**saved, "rewards": reward, "checkin_streak": days, "achievements": unlocked}
 
 
 @router.put("/logs/{user_id}/activity/{log_date}")
@@ -95,7 +98,8 @@ def log_activity(user_id: UUID, log_date: date, body: ActivityLogIn, supabase: C
     met_minutes = body.active_minutes is not None and body.active_minutes >= targets["daily_active_minutes"]
     reward = award_action(supabase, str(user_id), PointAction.daily_goals_met, log_date.isoformat()) if (met_steps or met_minutes) else None
     reward, days = checkin(supabase, str(user_id), log_date, reward)
-    return {**saved, "rewards": reward, "checkin_streak": days}
+    unlocked = achievement_service.evaluate(supabase, str(user_id), "activity", log_date, {"checkin_streak": days})
+    return {**saved, "rewards": reward, "checkin_streak": days, "achievements": unlocked}
 
 
 @router.post("/logs/{user_id}/meals")
@@ -113,7 +117,8 @@ def log_meal(user_id: UUID, body: MealLogIn, supabase: Client = Depends(get_supa
     saved = _write("log meal", lambda: supabase.table("meal_entries").insert(row).execute())
     reward = award_action(supabase, str(user_id), PointAction.meal_logged, saved["meal_id"])
     reward, days = checkin(supabase, str(user_id), body.log_date, reward)
-    return {**saved, "rewards": reward, "checkin_streak": days}
+    unlocked = achievement_service.evaluate(supabase, str(user_id), "meal", body.log_date, {"checkin_streak": days})
+    return {**saved, "rewards": reward, "checkin_streak": days, "achievements": unlocked}
 
 
 @router.get("/goals/{user_id}", response_model=GoalsOut)

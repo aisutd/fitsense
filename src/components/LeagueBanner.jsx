@@ -70,7 +70,7 @@ function LeagueBanner({ league, player }) {
         <div className="relative h-[104px] w-[104px]" style={{ boxShadow: `0 0 ${6 + tier}px ${L.color}` }}>
           <div className="absolute inset-0 flex items-end justify-center overflow-hidden"
                style={{ background: `radial-gradient(75% 65% at 50% 40%, ${L.color}99 0%, ${L.bg} 80%)` }}>
-            <PixelAvatar tier={tier} level={player?.fitness_level} body={body} crop="bust" size={96} />
+            <PixelAvatar tier={tier} level={player?.fitness_level} body={body} skin={player?.equipped_avatar} crop="bust" size={96} />
           </div>
           <div aria-hidden="true" className="absolute inset-0" style={{ boxShadow: `inset 0 0 0 3px ${L.color}, inset 0 0 0 5px ${L.deep}` }} />
           <span className="absolute -bottom-2.5 -left-2 flex h-[26px] min-w-8 items-center justify-center px-1.5 text-xl leading-none text-night-950"

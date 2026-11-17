@@ -71,7 +71,8 @@ def test_stale_standings_refresh_after_the_response(client, league, fake_db):
 
 def test_board_has_the_banner_details(client, league):
     board = client.get(f"/gamification/{league['Cy']}/league").json()
-    assert board["player"] == {"name": "Cy", "fitness_level": "intermediate", "avatar_body": "male"}
+    assert board["player"] == {"name": "Cy", "fitness_level": "intermediate", "avatar_body": "male", "equipped_avatar": "starter"}
+    assert board["standings"][0]["avatar_body"] == "male"
     assert isinstance(board["league"]["season_health_score"], int)
     assert "hidden_score" not in str(board)                     # the ranking score stays private
     assert board["podium"][0]["fitness_level"] == "intermediate"
@@ -80,7 +81,7 @@ def test_board_has_the_banner_details(client, league):
 
 
 def test_avatar_body(client, league):
-    assert client.put(f"/gamification/{league['Ana']}/avatar-body", json={"body": "female"}).json() == {"avatar_body": "female"}
+    assert client.put(f"/gamification/{league['Ana']}/avatar-body", json={"body": "female"}).json()["avatar_body"] == "female"
     assert client.get(f"/gamification/{league['Ana']}/league").json()["player"]["avatar_body"] == "female"
     assert client.put(f"/gamification/{league['Ana']}/avatar-body", json={"body": "robot"}).status_code == 422
     assert client.put(f"/gamification/{uuid4()}/avatar-body", json={"body": "male"}).status_code == 404
