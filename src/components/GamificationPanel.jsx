@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import PixelIcon from "./PixelIcon";
 import LeagueBanner from "./LeagueBanner";
-import { equipAvatar, getAvatarInventory, getGamification, getLeague, purchaseAvatar, setAvatarBody } from "../api";
+import PixelAvatar from "./PixelAvatar";
+import AchievementList from "./AchievementList";
+import { demoAchievement, equipAvatar, getAvatarInventory, getGamification, getLeague, purchaseAvatar, setAvatarBody } from "../api";
 import { LEAGUE_STYLES, fitnessLevel } from "../game/leagues";
 
 // The League tab: the season leaderboard front and center, then streaks, badges and the avatar shop,
@@ -61,11 +63,10 @@ function movementText(movement) {
   }[movement] ?? "You're holding your rank.";
 }
 
-function Leaderboard({ league, avatars }) {
+function Leaderboard({ league, onDemo, demoBusy }) {
   const { league: rank, season, standings } = league;
   const color = RANK_COLORS[rank.name] ?? "#4fd8ff";
   const listRef = useRef(null);
-  const emoji = (id) => avatars.find((a) => a.id === id)?.emoji || "🧑‍🚀";
 
   // start the list scrolled to your own row
   useEffect(() => {
@@ -114,7 +115,10 @@ function Leaderboard({ league, avatars }) {
                 <span className="w-12 shrink-0 text-right text-2xl tabular-nums" style={{ color: medal ?? "var(--color-muted)" }}>
                   {player.place}
                 </span>
-                <span className="text-2xl" aria-hidden="true">{emoji(player.avatar_id)}</span>
+                <span className="shrink-0" aria-hidden="true">
+                  <PixelAvatar tier={rank.tier} level={player.fitness_level} body={player.avatar_body} skin={player.avatar_id}
+                    crop="bust" size={32} title="" />
+                </span>
                 <span className="min-w-0 flex-1 truncate text-xl" style={medal ? { color: medal } : undefined}>
                   {player.name}
                   {player.is_current_user && <span className="px-frame ml-2 px-1.5 align-middle text-sm text-cyan [--frame:var(--color-cyan)]">YOU</span>}
@@ -132,10 +136,17 @@ function Leaderboard({ league, avatars }) {
         })}
         {!standings.length && <li className="py-8 text-center text-muted">You'll appear here after logging enough for a HealthScore.</li>}
       </ol>
-      <p className="mt-4 text-sm text-muted">
-        Standings reflect HealthScore and consistency and refresh as players check in; the exact scoring stays behind the scenes.
-        Ranks change when the season closes.
-      </p>
+      <div className="mt-4 flex items-end justify-between gap-4">
+        <p className="text-sm text-muted">
+          Standings reflect HealthScore and consistency and refresh as players check in; the exact scoring stays behind the scenes.
+          Ranks change when the season closes.
+        </p>
+        {/* for demos: earns (or replays) the Identity Crisis achievement */}
+        <button type="button" onClick={onDemo} disabled={demoBusy} title="Demo: trigger the Identity Crisis achievement"
+          className="px-focus shrink-0 border border-night-600 px-2 py-1 text-xs text-muted hover:border-cyan hover:text-cyan disabled:opacity-50">
+          {demoBusy ? "…" : "▣ Demo"}
+        </button>
+      </div>
     </section>
   );
 }
@@ -190,6 +201,7 @@ function GamificationPanel({ userId }) {
   const [reward, setReward] = useState(null);
   const [bodyChoice, setBodyChoice] = useState(null);   // shown straight away while it saves
   const [savingBody, setSavingBody] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
   const body = bodyChoice || data.league?.player?.avatar_body || "male";
 
   async function chooseBody(option) {
@@ -229,6 +241,20 @@ function GamificationPanel({ userId }) {
 
   useEffect(() => { reload(false); }, [userId]);
 
+  // The demo button: the System announces Identity Crisis (api.js passes it to the Announcer).
+  async function runDemo() {
+    setDemoBusy(true);
+    setMessage(null);
+    try {
+      await demoAchievement(userId);
+      await reload(true);
+    } catch (error) {
+      setMessage({ ok: false, text: error.message });
+    } finally {
+      setDemoBusy(false);
+    }
+  }
+
   async function doAvatarAction(avatar) {
     setBusyAvatar(avatar.id);
     setMessage(null);
@@ -245,7 +271,6 @@ function GamificationPanel({ userId }) {
   }
 
   const { inventory, league } = data;
-  const equippedEmoji = inventory?.avatars?.find((avatar) => avatar.id === inventory.equipped_avatar)?.emoji || "🧑‍🚀";
 
   return (
     <section className="mt-10" aria-labelledby="game-title">
@@ -255,7 +280,10 @@ function GamificationPanel({ userId }) {
           <h1 id="game-title" className="mt-2 text-5xl sm:text-6xl">League</h1>
         </div>
         <div className="relative flex items-center gap-3 px-frame bg-night-800/90 px-5 py-3 [--frame:var(--color-gold)]">
-          <span className="text-3xl" aria-label="Equipped avatar">{equippedEmoji}</span>
+          {league && (
+            <PixelAvatar tier={league.league.tier} level={league.player?.fitness_level} body={body}
+              skin={inventory?.equipped_avatar} crop="bust" size={44} title="Your equipped avatar" />
+          )}
           <div>
             <p className="mb-1 text-xs uppercase tracking-wider text-muted">Level {data.status?.level ?? 1}</p>
             <FitCoin amount={inventory?.fitcoins ?? data.status?.fitcoins ?? 0} animate={reward !== null} />
@@ -297,7 +325,7 @@ function GamificationPanel({ userId }) {
             </p>
           </section>
 
-          <Leaderboard league={league} avatars={inventory.avatars} />
+          <Leaderboard league={league} onDemo={runDemo} demoBusy={demoBusy} />
 
           <div className="mt-10 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
             <section className="px-frame bg-night-800/90 p-5 [--frame:var(--color-sleep)]">
@@ -327,7 +355,10 @@ function GamificationPanel({ userId }) {
               <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
                 {inventory.avatars.map((avatar) => (
                   <article key={avatar.id} className={`border p-4 text-center ${avatar.equipped ? "border-cyan bg-cyan/10" : "border-night-700 bg-night-900/45"}`}>
-                    <div className="text-5xl" aria-hidden="true">{avatar.emoji}</div>
+                    <div className="flex justify-center" aria-hidden="true">
+                      <PixelAvatar tier={league.league.tier} level={league.player?.fitness_level} body={body} skin={avatar.id}
+                        crop="bust" size={84} title="" />
+                    </div>
                     <h3 className="mt-2 text-lg font-bold">{avatar.name}</h3>
                     <p className="mt-1 text-sm text-gold">{avatar.cost === 0 ? "FREE" : `${avatar.cost} FitCoins`}</p>
                     <button
@@ -344,6 +375,8 @@ function GamificationPanel({ userId }) {
               {message && !message.ok && state === "ready" && <p role="alert" className="mt-4 text-nutrition">{message.text}</p>}
             </section>
           </div>
+
+          <AchievementList userId={userId} />
 
           <RankLadder leagues={league.leagues ?? Object.keys(RANK_COLORS)} current={league.league.tier} share={league.promotion_share ?? 0.2} />
         </>

@@ -8,6 +8,8 @@ from postgrest.exceptions import APIError
 from pydantic import BaseModel
 from supabase import Client
 
+from app import achievement_service
+from app.achievements import BY_CODE
 from app.database import get_supabase
 from app.gamification import AVATARS, LEAGUES, LEVEL_THRESHOLDS, POINTS, PointAction, level_progress
 from app.gamification_service import award_action, checkin_streak
@@ -116,16 +118,17 @@ def _display_name(profile: dict | None, account: dict | None, user_id: str) -> s
     return (profile or {}).get("name") or (account or {}).get("username") or f"Player {user_id[:4]}"
 
 
-def _names_and_avatars(supabase: Client, ids: list[str]) -> dict[str, tuple[str, str, str | None]]:
-    """{user_id: (display name, equipped avatar, fitness level)}, looked up in batches."""
+def _names_and_avatars(supabase: Client, ids: list[str]) -> dict[str, tuple[str, str, str | None, str]]:
+    """{user_id: (display name, equipped avatar, fitness level, avatar body)}, looked up in batches."""
     profiles, accounts, games = {}, {}, {}
     for i in range(0, len(ids), LOOKUP_CHUNK):
         batch = ids[i:i + LOOKUP_CHUNK]
         profiles |= {r["user_id"]: r for r in supabase.table("profiles").select("user_id, name, fitness_level").in_("user_id", batch).execute().data}
         accounts |= {r["user_id"]: r for r in supabase.table("accounts").select("user_id, username").in_("user_id", batch).execute().data}
-        games |= {r["user_id"]: r for r in supabase.table("user_gamification").select("user_id, equipped_avatar").in_("user_id", batch).execute().data}
+        games |= {r["user_id"]: r for r in supabase.table("user_gamification").select("user_id, equipped_avatar, avatar_body")
+                  .in_("user_id", batch).execute().data}
     return {u: (_display_name(profiles.get(u), accounts.get(u), u), (games.get(u) or {}).get("equipped_avatar") or "starter",
-                (profiles.get(u) or {}).get("fitness_level"))
+                (profiles.get(u) or {}).get("fitness_level"), (games.get(u) or {}).get("avatar_body") or "male")
             for u in ids}
 
 
@@ -209,8 +212,14 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
         ids = [row["user_id"] for row in rows]
         names = _names_and_avatars(supabase, list(dict.fromkeys([*ids, uid])))   # plus you, for the banner
         standings = [{"place": i + 1, "name": names[u][0], "avatar_id": names[u][1], "fitness_level": names[u][2],
-                      "is_current_user": u == uid, "zone": zone(i + 1)} for i, u in enumerate(ids)]
+                      "avatar_body": names[u][3], "is_current_user": u == uid, "zone": zone(i + 1)} for i, u in enumerate(ids)]
         podium = [{**row, "user_id": ids[row["place"] - 1]} for row in standings[:5]]
+        before = (supabase.table("league_season_scores").select("tier").eq("season_start", previous_start.isoformat())
+                  .eq("user_id", uid).limit(1).execute().data)
+        unlocked = achievement_service.evaluate(supabase, uid, "league", today, {
+            "tier": tier, "league": LEAGUES[tier], "position": position, "members": members,
+            "previous_tier": int(before[0]["tier"]) if before else None,
+        })
         return {
             "season": {
                 "start": season_start.isoformat(), "end": season_end.isoformat(),
@@ -227,11 +236,13 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
                 "name": names[uid][0],
                 "fitness_level": names[uid][2],
                 "avatar_body": game.get("avatar_body") or "male",   # column from backend/sql/010
+                "equipped_avatar": game.get("equipped_avatar") or "starter",   # the outfit from the shop
             },
             "podium": podium,
             "standings": standings,
             "leagues": LEAGUES,
             "promotion_share": PROMOTION_SHARE,
+            "achievements": unlocked,
         }
     except HTTPException:
         raise
@@ -294,7 +305,11 @@ def purchase_avatar(user_id: UUID, avatar_id: str, supabase: Client = Depends(ge
         result = supabase.rpc("purchase_avatar", {
             "p_user_id": str(user_id), "p_avatar_id": avatar_id, "p_cost": avatar["cost"],
         }).execute().data[0]
-        return {"purchased": result["purchased"], "fitcoins": result["fitcoins_balance"], "avatar_id": avatar_id}
+        owned = {row["avatar_id"] for row in supabase.table("user_avatars").select("avatar_id").eq("user_id", str(user_id)).execute().data}
+        unlocked = achievement_service.evaluate(supabase, str(user_id), "shop", extra={
+            "purchased": result["purchased"], "owns_every_avatar": all(a["id"] in owned for a in AVATARS)})
+        return {"purchased": result["purchased"], "fitcoins": result["fitcoins_balance"], "avatar_id": avatar_id,
+                "achievements": unlocked}
     except APIError as e:
         if e.code == "P0001":
             raise HTTPException(status_code=402, detail="Not enough FitCoins")
@@ -309,18 +324,27 @@ def equip_avatar(user_id: UUID, avatar_id: str, supabase: Client = Depends(get_s
         raise HTTPException(status_code=404, detail="Avatar not found")
     uid = str(user_id)
     try:
-        _ensure_game_row(supabase, uid)
+        game = _ensure_game_row(supabase, uid)
         owned = supabase.table("user_avatars").select("avatar_id").eq(
             "user_id", uid
         ).eq("avatar_id", avatar_id).limit(1).execute().data
         if not owned:
             raise HTTPException(status_code=403, detail="Purchase this avatar before equipping it")
+        changed = (game.get("equipped_avatar") or "starter") != avatar_id
         supabase.table("user_gamification").update({"equipped_avatar": avatar_id}).eq("user_id", uid).execute()
-        return {"equipped_avatar": avatar_id}
+        unlocked = _avatar_changed(supabase, uid) if changed else []
+        return {"equipped_avatar": avatar_id, "achievements": unlocked}
     except HTTPException:
         raise
     except APIError as e:
         raise HTTPException(status_code=502, detail=f"Failed to equip avatar: {e.message}")
+
+
+def _avatar_changed(supabase: Client, uid: str) -> list[dict]:
+    """Count an avatar change toward Identity Crisis (three in a day)."""
+    today = datetime.now(timezone.utc).date()
+    changes = achievement_service.count_avatar_change(supabase, uid, today)
+    return achievement_service.evaluate(supabase, uid, "avatar", today, {"changes_today": changes})
 
 
 class AvatarBodyIn(BaseModel):
@@ -332,13 +356,47 @@ def set_avatar_body(user_id: UUID, payload: AvatarBodyIn, supabase: Client = Dep
     """Which body the pixel avatar uses (male / female). Needs backend/sql/010_avatar_body.sql."""
     uid = str(user_id)
     try:
-        _ensure_game_row(supabase, uid)
+        game = _ensure_game_row(supabase, uid)
+        changed = (game.get("avatar_body") or "male") != payload.body
         supabase.table("user_gamification").update({"avatar_body": payload.body}).eq("user_id", uid).execute()
-        return {"avatar_body": payload.body}
+        unlocked = _avatar_changed(supabase, uid) if changed else []
+        return {"avatar_body": payload.body, "achievements": unlocked}
     except HTTPException:
         raise
     except APIError as e:
         raise HTTPException(status_code=502, detail=f"Failed to save avatar body (has backend/sql/010_avatar_body.sql been run?): {e.message}")
+
+
+@router.get("/{user_id}/achievements")
+def get_achievements(user_id: UUID, supabase: Client = Depends(get_supabase)):
+    """Every achievement: earned ones with the System's commentary, the rest as goals or "???" with a hint.
+    (The list is under "items", so the frontend doesn't announce them again.)"""
+    if not _profile_exists(supabase, user_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    try:
+        return achievement_service.catalog(supabase, str(user_id))
+    except APIError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to load achievements (has backend/sql/011_achievements.sql been run?): {e.message}")
+
+
+DEMO_ACHIEVEMENT = "identity_crisis"
+
+
+@router.post("/{user_id}/achievements/demo")
+def demo_achievement(user_id: UUID, supabase: Client = Depends(get_supabase)):
+    """For demos: earn Identity Crisis as if the avatar had changed three times today. Every press is
+    announced as a first time, with its usual reward line; the reward itself is only paid once (paid: false
+    after that), so the button can't be used to farm coins."""
+    uid = str(user_id)
+    if not _profile_exists(supabase, user_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+    unlocked = achievement_service.evaluate(supabase, uid, "avatar", extra={"changes_today": 3}, only={DEMO_ACHIEVEMENT})
+    if unlocked:
+        return {"achievements": [{**unlocked[0], "paid": True}]}
+    a = BY_CODE[DEMO_ACHIEVEMENT]
+    xp, coins = a.reward
+    return {"achievements": [{**achievement_service.announcement(a, uid, {"count": 3}, {"xp": xp, "fitcoins": coins}),
+                              "paid": False}]}
 
 
 @router.post("/{user_id}/points", response_model=AwardPointsOut)

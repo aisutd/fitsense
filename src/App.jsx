@@ -3,6 +3,7 @@ import { useLenis } from "lenis/react";
 import PixelBackground from "./components/PixelBackground";
 import PixelTransition from "./components/PixelTransition";
 import RewardLayer from "./components/RewardLayer";
+import Announcer from "./components/Announcer";
 import { NameGreeting, Information, GoalScreen, Proficiency, WorkoutDays, WorkoutLocation } from "./screens/Onboarding";
 import HealthScore from "./screens/HealthScore";
 import Forecast from "./screens/Forecast";
@@ -261,6 +262,7 @@ function App() {
       <div key={screen}>{content}</div>
       <PixelTransition phase={phase} onCovered={handleCovered} onRevealed={handleRevealed} />
       <RewardLayer />
+      <Announcer />
     </div>
   );
 }

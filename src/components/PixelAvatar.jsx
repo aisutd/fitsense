@@ -1,11 +1,12 @@
 import { leagueStyle } from "../game/leagues";
 
 // Pixel-art player: the fitness level sets the build, the league colours the clothes and
-// unlocks accessories (they stack), the body is the player's pick (male / female).
-// Drawn on a 32 x 44 grid as SVG rects so it stays crisp at any size.
+// unlocks accessories (they stack), the body is the player's pick (male / female), and the outfit
+// from the FitCoin shop (skin) adds a themed hood and extras on top.
+// Drawn on a 32 x 45 grid as SVG rects so it stays crisp at any size.
 const W = 32;
-const H = 44;
-const OY = 3; // room above the head for the crown
+const H = 45;
+const OY = 4; // room above the head for the crown and horns
 
 const BUILDS = {
   male: {
@@ -25,7 +26,58 @@ const SKIN_D = "#c98a5c";
 const INK = "#0a1122";
 const GOLD = "#ffd23f";
 
-export function avatarRects({ tier = 0, level = "beginner", body = "male" }) {
+// Shop outfits: colours, and what each adds behind the body (back) and over the head (head).
+export const SKINS = {
+  starter: null,
+  fox: {
+    color: "#ff8a3d", deep: "#b4521c", light: "#ffe2c8",
+    back: (R, f) => { R(f.tailX, 27, 3, 2, "#ff8a3d"); R(f.tailX + 2, 24, 2, 4, "#ff8a3d"); R(f.tailX + 2, 22, 2, 2, "#ffe2c8"); },
+    head: (R) => {
+      R(11, -1, 2, 2, "#ff8a3d"); R(11, -2, 1, 1, "#ff8a3d"); R(12, 0, 1, 1, "#ffe2c8");     // ears
+      R(19, -1, 2, 2, "#ff8a3d"); R(20, -2, 1, 1, "#ff8a3d"); R(19, 0, 1, 1, "#ffe2c8");
+      R(12, 4, 8, 1, "#ffe2c8");                                                          // white trim
+    },
+  },
+  owl: {
+    color: "#8a5a32", deep: "#5c3a1e", light: "#e8c89a",
+    back: (R, f) => { R(f.xl - 2, 15, 2, 9, "#5c3a1e"); R(f.xr + f.aw, 15, 2, 9, "#5c3a1e"); },  // folded wings
+    head: (R) => {
+      R(10, -1, 2, 2, "#8a5a32"); R(10, -2, 1, 1, "#e8c89a");                              // ear tufts
+      R(20, -1, 2, 2, "#8a5a32"); R(21, -2, 1, 1, "#e8c89a");
+      R(12, 7, 3, 3, "#f7b733"); R(17, 7, 3, 3, "#f7b733");                               // round eyes,
+      R(13, 8, 1, 1, INK); R(18, 8, 1, 1, INK); R(12, 7, 1, 1, "#fff1c4"); R(17, 7, 1, 1, "#fff1c4"); // apart
+      R(15, 9, 2, 1, "#f7b733"); R(15, 10, 2, 1, "#c4831a");                              // beak
+    },
+  },
+  tiger: {
+    color: "#ff9a1f", deep: "#b86200", light: "#fff1dd",
+    back: (R, f) => { R(f.tailX, 28, 4, 1, "#ff9a1f"); R(f.tailX + 1, 28, 1, 1, INK); R(f.tailX + 3, 26, 1, 3, "#ff9a1f"); },
+    head: (R) => {
+      R(11, -1, 3, 2, "#ff9a1f"); R(12, 0, 1, 1, "#ff8fa3");                              // round ears, pink inside
+      R(18, -1, 3, 2, "#ff9a1f"); R(19, 0, 1, 1, "#ff8fa3");
+      R(12, 2, 2, 1, INK); R(18, 2, 2, 1, INK); R(15, 1, 2, 1, INK); R(15, 3, 2, 1, INK); // stripes
+      R(11, 6, 1, 2, INK); R(20, 6, 1, 2, INK); R(12, 4, 8, 1, "#fff1dd");                // cheek stripes, trim
+    },
+  },
+  dragon: {
+    color: "#2fd07a", deep: "#138a4c", light: "#c8ffe0",
+    back: (R) => {   // wings rising behind the shoulders (inside the banner's head-and-shoulders crop)
+      for (const side of [-1, 1]) {
+        const at = (dx, y, w, h, c) => R(side < 0 ? 10 - dx - w + 1 : 21 + dx, y, w, h, c);
+        at(1, 4, 2, 2, "#2fd07a");                                                    // wing tip
+        at(0, 6, 4, 4, "#138a4c"); at(0, 10, 3, 3, "#138a4c"); at(0, 13, 2, 2, "#138a4c");  // membrane
+        at(3, 5, 1, 5, "#2fd07a");                                                    // outer edge
+      }
+    },
+    head: (R) => {
+      R(12, -1, 2, 2, "#fff1c4"); R(11, -3, 2, 2, "#fff1c4"); R(10, -4, 1, 1, "#fff1c4");  // horns, curving out
+      R(18, -1, 2, 2, "#fff1c4"); R(19, -3, 2, 2, "#fff1c4"); R(21, -4, 1, 1, "#fff1c4");
+      R(15, 0, 2, 1, "#c8ffe0"); R(14, 4, 1, 1, "#c8ffe0"); R(17, 4, 1, 1, "#c8ffe0");     // ridge, scales
+    },
+  },
+};
+
+export function avatarRects({ tier = 0, level = "beginner", body = "male", skin = "starter" }) {
   const female = body === "female";
   const lvl = String(level || "").toLowerCase();
   const b = BUILDS[female ? "female" : "male"][lvl] || BUILDS.male.beginner;
@@ -52,6 +104,9 @@ export function avatarRects({ tier = 0, level = "beginner", body = "male" }) {
     R(xl - 1, 35, b.tw + 2 * b.aw + 2, 1, L.color);
   }
   if (female) { R(21, 4, 2, 2, HAIR); R(22, 6, 2, 7, HAIR); R(22, 12, 1, 2, HAIR); } // ponytail
+  const outfit = SKINS[skin] || null;
+  const frame = { xl, xr, aw: b.aw, tailX: hx + hipW };
+  if (outfit) outfit.back(R, frame);
 
   // head
   R(12, 4, 8, 8, SKIN); R(19, 5, 1, 6, SKIN_D);
@@ -67,6 +122,12 @@ export function avatarRects({ tier = 0, level = "beginner", body = "male" }) {
     R(11, 5, 1, 3, HAIR); R(20, 5, 1, 3, HAIR);
     R(15, 10, 2, 1, SKIN_D);
     if (adv) R(13, 12, 6, 1, SKIN_D); else R(14, 12, 4, 1, SKIN_D);
+  }
+
+  if (outfit) { // the outfit's hood over the hair, then its ears / horns / goggles
+    R(11, 1, 10, 4, outfit.color); R(11, 5, 1, 5, outfit.color); R(20, 5, 1, 5, outfit.color);
+    R(20, 2, 1, 3, outfit.deep);
+    outfit.head(R);
   }
 
   // torso: shirt in the league colour
@@ -124,7 +185,7 @@ export function avatarRects({ tier = 0, level = "beginner", body = "male" }) {
 }
 
 // crop="bust" shows head and shoulders (for the banner's face card).
-function PixelAvatar({ tier = 0, level = "beginner", body = "male", crop = "full", size, className = "", title }) {
+function PixelAvatar({ tier = 0, level = "beginner", body = "male", skin = "starter", crop = "full", size, className = "", title }) {
   const bust = crop === "bust";
   const view = bust ? [4, 0, 24, 24] : [0, 0, W, H];
   const L = leagueStyle(tier);
@@ -136,7 +197,7 @@ function PixelAvatar({ tier = 0, level = "beginner", body = "male", crop = "full
       shapeRendering="crispEdges" role="img" aria-label={label}
       className={className} style={{ filter: glow, display: "block" }}
     >
-      {avatarRects({ tier, level, body }).map(([x, y, w, h, c], i) => (
+      {avatarRects({ tier, level, body, skin }).map(([x, y, w, h, c], i) => (
         <rect key={i} x={x} y={y} width={w} height={h} fill={c} />
       ))}
     </svg>

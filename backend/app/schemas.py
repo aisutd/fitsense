@@ -408,3 +408,4 @@ class MealOut(BaseModel):
 class ConfirmedMealOut(MealOut):
     rewards: dict | None = None
     checkin_streak: int | None = None
+    achievements: list[dict] = []
