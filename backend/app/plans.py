@@ -1,7 +1,8 @@
 """This week's workout plan for one player, from the weekly plan model (weekly_plan.py at the repo root).
 
 The model builds week 1 from the profile (goal, level, location, equipment) and adapts every later
-week to how many of last week's plan days the player completed. Every week keeps at least one
+week to how many of last week's plan days the player completed (with adaptation_model.py's
+XGBoost model when its file exists, else fixed thresholds). Every week keeps at least one
 recovery day; the schedule spreads the plan days over the week with recovery days between them. Plans are saved in workout_plans /
 plan_exercises; workout_logs with plan_id + day_number say how each plan day went.
 """
@@ -20,6 +21,12 @@ ADAPTATION_TEXT = {
     "progress": "You finished last week's plan, so this week steps up.",
     "same dose": "You did most of last week's plan, so this week keeps the same doses.",
     "reduce": "Last week was hard to fit in, so this week is a little lighter.",
+}
+# When the adaptation model picked the change, from its predicted completion rather than a threshold.
+MODEL_ADAPTATION_TEXT = {
+    "progress": "From how your weeks have gone, you're likely to finish a step up, so this week steps up.",
+    "same dose": "This week keeps the same doses, the most you're likely to finish right now.",
+    "reduce": "This week is a little lighter, so you're more likely to finish it.",
 }
 
 
@@ -40,6 +47,11 @@ def exercises() -> dict:
 @lru_cache
 def ranker():
     return model_module("exercise_ranker").load_model()   # None until a model is trained
+
+
+@lru_cache
+def adapter():
+    return model_module("adaptation_model").load_model()   # None without a model: the rules decide
 
 
 def _profile(client, user_id: str) -> dict:
@@ -79,27 +91,7 @@ def _plan_logs(client, user_id: str) -> list[dict]:
 
 
 def link_logs(saved: list[tuple[str, dict]], logs: list[dict]) -> list[dict]:
-    """Logs with plan_id/day_number filled in where they're missing: a workout logged in a week that
-    has a plan counts as that plan's next open day (in date order). Older logs from the Workout tab
-    were never linked, which made every week look skipped to the model."""
-    week_plans = {plan["week_start"]: (plan_id, plan["days"]) for plan_id, plan in saved}
-    taken: dict[str, set] = {}
-    for log in logs:
-        if log.get("plan_id") and log.get("day_number"):
-            taken.setdefault(log["plan_id"], set()).add(log["day_number"])
-    linked = []
-    for log in sorted(logs, key=lambda l: str(l.get("workout_date"))):
-        if not log.get("plan_id") and log.get("workout_date"):
-            day = date.fromisoformat(str(log["workout_date"])[:10])
-            match = week_plans.get(day - timedelta(days=day.weekday()))
-            if match:
-                plan_id, days = match
-                free = [d for d in range(1, days + 1) if d not in taken.get(plan_id, set())]
-                if free:
-                    taken.setdefault(plan_id, set()).add(free[0])
-                    log = {**log, "plan_id": plan_id, "day_number": free[0]}
-        linked.append(log)
-    return linked
+    return model_module("weekly_plan").link_logs(saved, logs)
 
 
 def plan_day_for(client, user_id: str, workout_date: date) -> tuple[str, int] | None:
@@ -128,7 +120,7 @@ def current_plan(client, user_id: str, today: date) -> dict:
 
     current = next(((pid, p) for pid, p in saved if p["week_start"] == start), None)
     if current is None:
-        plan = wp.plan_for_week(profile, exercises(), saved, logs, start, ranker())
+        plan = wp.plan_for_week(profile, exercises(), saved, logs, start, ranker(), adapter())
         ids, _ = wp.sync_exercises(client, exercises())
         plan_row, exercise_rows = wp.plan_rows(user_id, profile, plan, ids)
         client.table("workout_plans").insert(plan_row).execute()
@@ -142,8 +134,12 @@ def current_plan(client, user_id: str, today: date) -> dict:
     adaptation = None
     if previous:
         prev_logs = [log for log in logs if log["plan_id"] == previous[0]]
-        change, _ = wp.adaptation(profile, previous[1], prev_logs)
-        adaptation = {"change": change, "text": ADAPTATION_TEXT[change],
+        result = wp.adapt(profile, previous[1], prev_logs, adapter(),
+                          wp.earlier_rates(saved, logs, previous[1]["week_start"]))
+        change, predicted = result["change"], result["predicted"]
+        adaptation = {"change": change, "text": (MODEL_ADAPTATION_TEXT if predicted else ADAPTATION_TEXT)[change],
+                      "decided_by": "model" if predicted else "rules",
+                      "predicted_completion": round(predicted[change], 2) if predicted else None,
                       "last_week_completion": round(wp.completion_rate(previous[1], prev_logs), 2)}
 
     statuses: dict[int, dict] = {}

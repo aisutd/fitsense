@@ -7,6 +7,7 @@ import unittest
 
 import numpy as np
 
+import adaptation_model as adapt
 import exercise_ranker as ranker
 import progress_forecast as forecast
 import seed_week_one as seed
@@ -238,8 +239,8 @@ class RankerTests(unittest.TestCase):
             'profiles': [{'user_id': 'u1', 'age': 25, 'fitness_level': 'beginner',
                           'fitness_goal': 'build_muscle', 'workout_location': 'gym',
                           'workout_frequency': 3, 'workout_preferences': ['cardio']}],
-            'workout_logs': [{'workout_log_id': 'l1', 'plan_id': 'p1', 'completion_status': 'skipped'},
-                             {'workout_log_id': 'l2', 'plan_id': 'p1', 'completion_status': 'completed'},
+            'workout_logs': [{'workout_log_id': 'l1', 'user_id': 'u1', 'plan_id': 'p1', 'completion_status': 'skipped'},
+                             {'workout_log_id': 'l2', 'user_id': 'u1', 'plan_id': 'p1', 'completion_status': 'completed'},
                              {'workout_log_id': 'l3', 'plan_id': 'p2', 'completion_status': 'skipped'},
                              {'workout_log_id': 'l4', 'plan_id': None, 'completion_status': 'completed'}],
             'plan_exercises': [
@@ -269,7 +270,7 @@ class RankerTests(unittest.TestCase):
         client = FakeClient({
             'profiles': [{'user_id': 'u1', 'age': 25, 'fitness_level': 'beginner',
                           'fitness_goal': 'build_muscle', 'workout_location': 'gym', 'workout_frequency': 3}],
-            'workout_logs': [{'workout_log_id': 'l1', 'plan_id': 'p1', 'completion_status': 'completed'}],
+            'workout_logs': [{'workout_log_id': 'l1', 'user_id': 'u1', 'plan_id': 'p1', 'completion_status': 'completed'}],
             'plan_exercises': [{'plan_exercise_id': f'{i:05d}', 'plan_id': 'p1', 'workout_plans': {'user_id': 'u1'},
                                 'exercises': {'name': exercise['name']}} for i in range(1500)],
         })
@@ -778,6 +779,98 @@ class WeeklyPlanTests(unittest.TestCase):
         self.assertEqual(summary['week 2: progress'], 1)
         self.assertEqual(len(new_exercises), 876)
         self.assertEqual({i['plan_id'] for i in items}, {p['plan_id'] for p in plan_rows})
+
+
+class AdaptationModelTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.exercises = prototype.load_exercises()
+        cls.profile = {'user_id': 'u1', 'name': 'Sam', 'age': 30, 'fitness_level': 'beginner',
+                       'fitness_goal': 'general_fitness', 'workout_location': 'home', 'workout_frequency': 3,
+                       'equipment': [], 'workout_preferences': [], 'points': 0}
+        cls.week_one = plans.first_week(cls.profile, cls.exercises, date(2026, 10, 5))
+        cls.train_rows, cls.validation_rows = adapt.split_by_user(adapt.synthetic_rows(n_users=300))
+        cls.model = adapt.train(cls.train_rows, cls.validation_rows)
+
+    @staticmethod
+    def logs(*statuses):
+        return [{'day_number': day, 'completion_status': s} for day, s in enumerate(statuses, 1) if s]
+
+    def test_feature_rows_match_the_feature_names(self):
+        last = adapt.week_summary(['completed', 'partial', 'skipped'])
+        self.assertEqual(len(adapt.feature_row(self.profile, last, [0.5], 'progress', 4)), len(adapt.FEATURE_NAMES))
+        self.assertAlmostEqual(last['rate'], 0.5)
+
+    def test_model_beats_same_as_last_week_on_held_out_users(self):
+        baseline, model = adapt.evaluate(self.model, self.validation_rows)
+        self.assertLess(model, baseline)
+
+    def test_model_finishes_more_than_the_rules_on_simulated_users(self):
+        report = adapt.compare_policies(self.model, n_users=150)
+        self.assertGreater(report['model'][0], report['rules'][0])
+
+    def test_without_a_model_the_rules_decide(self):
+        result = plans.adapt(self.profile, self.week_one, self.logs(*['completed'] * 3))
+        self.assertEqual((result['change'], result['days'], result['predicted']), ('progress', 3, None))
+        self.assertEqual(plans.adaptation(self.profile, self.week_one, self.logs('completed')), ('reduce', 2))
+
+    def test_model_picks_among_the_allowed_changes(self):
+        result = plans.adapt(self.profile, self.week_one, self.logs('completed', 'completed', 'partial'),
+                             self.model, [1.0])
+        self.assertEqual(set(result['predicted']), {'progress', 'same dose', 'reduce'})
+        self.assertIn(result['change'], result['predicted'])
+        self.assertTrue(all(0 <= p <= 1 for p in result['predicted'].values()))
+        week_two = plans.next_week(self.profile, self.exercises, self.week_one,
+                                   self.logs('completed', 'completed', 'partial'), adapter=self.model,
+                                   earlier_rates=[1.0])
+        self.assertEqual(week_two['days'], result['days'])
+
+    def test_a_mostly_missed_week_never_steps_up(self):
+        result = plans.adapt(self.profile, self.week_one, self.logs('partial'), self.model)
+        self.assertNotIn('progress', result['predicted'])
+        self.assertNotEqual(result['change'], 'progress')
+
+    def test_choose_takes_the_hardest_change_expected_to_be_finished(self):
+        self.assertEqual(adapt.choose({'progress': 0.9, 'same dose': 0.95, 'reduce': 0.97}), 'progress')
+        self.assertEqual(adapt.choose({'progress': 0.5, 'same dose': 0.8, 'reduce': 0.9}), 'same dose')
+        self.assertEqual(adapt.choose({'same dose': 0.4, 'reduce': 0.6}), 'reduce')
+        self.assertEqual(adapt.choose({'progress': 0.3, 'same dose': 0.5, 'reduce': 0.45}), 'same dose')
+
+    def test_change_made_reads_dose_then_days(self):
+        week_two = plans.next_week(self.profile, self.exercises, self.week_one, self.logs(*['completed'] * 3))
+        self.assertEqual(adapt.change_made(self.week_one, week_two), 'progress')
+        self.assertEqual(adapt.change_made(self.week_one, self.week_one), 'same dose')
+        self.assertEqual(adapt.change_made(self.week_one, {**self.week_one, 'days': 2}), 'reduce')
+
+    def test_training_rows_from_supabase_use_finished_weeks_only(self):
+        core = next(i['exercise'] for i in self.week_one['items'] if i['group'] == 'Core')
+        row = {'user_id': 'u1', 'age': 30, 'fitness_level': 'beginner', 'fitness_goal': 'general_fitness',
+               'workout_location': 'home', 'workout_frequency': 3}
+        weeks = ['2026-10-05', '2026-10-12', '2026-10-19']
+        client = FakeClient({
+            'profiles': [row],
+            'workout_plans': [{'plan_id': f'p{i}', 'user_id': 'u1', 'days_per_week': 3, 'week_start': w}
+                              for i, w in enumerate(weeks)],
+            'plan_exercises': [{'plan_exercise_id': f'e{i}', 'plan_id': f'p{i}', 'day_number': 1, 'sets': 1 + i,
+                                'reps': 8, 'duration_minutes': None, 'exercises': {'name': core['name']}}
+                               for i in range(3)],
+            'workout_logs': [{'workout_log_id': 'l0', 'user_id': 'u1', 'plan_id': 'p0', 'day_number': 1, 'completion_status': 'completed'},
+                             {'workout_log_id': 'l1', 'user_id': 'u1', 'plan_id': 'p1', 'day_number': 1, 'completion_status': 'completed'},
+                             {'workout_log_id': 'l2', 'user_id': 'u1', 'plan_id': 'p1', 'day_number': 2, 'completion_status': 'partial'}],
+        })
+        grouped = adapt.training_rows_from_supabase(client, today=date(2026, 10, 23))  # week of 10-19 not over
+        self.assertEqual([user for user, _ in grouped], ['u1'])
+        (features, completion), = grouped[0][1]
+        self.assertEqual(features[adapt.FEATURE_NAMES.index('change')], 1.0)   # 1 set -> 2 sets
+        self.assertAlmostEqual(features[adapt.FEATURE_NAMES.index('last_rate')], 1 / 3)
+        self.assertAlmostEqual(completion, 0.5)
+
+    def test_no_saved_model_means_rules(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'adaptation.json'
+            self.assertIsNone(adapt.load_model(path))
+            adapt.save_model(self.model, path)
+            self.assertIsNotNone(adapt.load_model(path))
 
 
 if __name__ == '__main__':

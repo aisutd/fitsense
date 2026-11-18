@@ -12,6 +12,8 @@ dist/
 
 # trained on simulated or real user data; rebuild with weight_forecast_model.py train
 models/weight_forecast.json
+# rebuild with adaptation_model.py train (the backend image trains it at build time)
+models/adaptation.json
 # Secrets (.env.example is committed)
 .env
 

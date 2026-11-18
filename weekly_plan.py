@@ -10,6 +10,10 @@ week 2 on, the plan is rebuilt from last week's plan and the workout_logs linked
 - at least REPEAT_RATE: same dose
 - below that: one more day than they did (up to workout_frequency), one step down in dose
 
+Those thresholds are the fallback. With a trained adaptation model (adaptation_model.py), the
+model predicts next week's completion for each of those changes and picks the most demanding
+one the user is expected to finish (adapt()); a mostly missed week still can't step up.
+
 On top of that, an exercise that was only on skipped days is swapped for the next-ranked one in
 its group, and one on a partial or skipped day steps down. Doses never leave the guideline range.
 
@@ -29,6 +33,7 @@ from pathlib import Path
 import sys
 import uuid
 
+import adaptation_model
 import exercise_ranker
 from exercise_ranker import fetch_all
 from progress_forecast import to_date, week_start
@@ -126,39 +131,91 @@ def assemble(profile, start, days, rotations, doses):
     return {"week_start": start, "days": days, "items": items}
 
 
+def link_logs(saved, logs):
+    """Logs with plan_id/day_number filled in where they're missing: a workout logged in a week that
+    has a plan counts as that plan's next open day (in date order). Older logs from the Workout tab
+    were never linked, which made every week look skipped to the models. Rest-day logs stay unlinked."""
+    week_plans = {plan["week_start"]: (plan_id, plan["days"]) for plan_id, plan in saved}
+    taken = {}
+    for log in logs:
+        if log.get("plan_id") and log.get("day_number"):
+            taken.setdefault(log["plan_id"], set()).add(log["day_number"])
+    linked = []
+    for log in sorted(logs, key=lambda l: str(l.get("workout_date"))):
+        if not log.get("plan_id") and log.get("workout_date") and log.get("completion_status") in STATUS_RANK:
+            day = to_date(str(log["workout_date"])[:10])
+            match = week_plans.get(day - timedelta(days=day.weekday()))
+            if match:
+                plan_id, days = match
+                free = [d for d in range(1, days + 1) if d not in taken.get(plan_id, set())]
+                if free:
+                    taken.setdefault(plan_id, set()).add(free[0])
+                    log = {**log, "plan_id": plan_id, "day_number": free[0]}
+        linked.append(log)
+    return linked
+
+
 def day_statuses(plan, logs):
     """{day: best completion_status logged for it}. Unlogged days count as skipped."""
     statuses = {day: "skipped" for day in range(1, plan["days"] + 1)}
     for log in logs:
         day = log.get("day_number")
-        if day in statuses and STATUS_RANK[log["completion_status"]] > STATUS_RANK[statuses[day]]:
+        if (day in statuses and log.get("completion_status") in STATUS_RANK
+                and STATUS_RANK[log["completion_status"]] > STATUS_RANK[statuses[day]]):
             statuses[day] = log["completion_status"]
     return statuses
 
 
 def completion_rate(plan, logs):
-    statuses = day_statuses(plan, logs).values()
-    done = sum(1.0 if s == "completed" else 0.5 if s == "partial" else 0.0 for s in statuses)
-    return done / plan["days"]
+    return adaptation_model.week_summary(day_statuses(plan, logs).values())["rate"]
 
 
-def adaptation(profile, previous, logs):
-    """("progress" | "same dose" | "reduce", days next week) from last week's completion."""
-    statuses = day_statuses(previous, logs)
-    rate = completion_rate(previous, logs)
-    most = training_days(profile)
+def rule_change(statuses):
+    """The fixed-threshold change for next week, used when there is no adaptation model."""
+    rate = adaptation_model.week_summary(statuses.values())["rate"]
     if rate >= PROGRESS_RATE and "skipped" not in statuses.values():
-        return "progress", min(most, previous["days"] + 1)
-    if rate >= REPEAT_RATE:
-        return "same dose", min(most, previous["days"])
+        return "progress"
+    return "same dose" if rate >= REPEAT_RATE else "reduce"
+
+
+def change_options(profile, days, statuses):
+    """{change: days next week} the plan may choose from. No step up after a mostly missed week."""
+    most = training_days(profile)
     did = sum(1 for s in statuses.values() if s != "skipped")
-    return "reduce", max(1, min(most, did + 1))
+    options = {"progress": min(most, days + 1), "same dose": min(most, days), "reduce": max(1, min(most, did + 1))}
+    if adaptation_model.week_summary(statuses.values())["rate"] < REPEAT_RATE:
+        del options["progress"]
+    return options
 
 
-def next_week(profile, exercises, previous, logs, model=None):
+def adapt(profile, previous, logs, adapter=None, earlier_rates=()):
+    """{"change", "days", "predicted"} for the week after previous.
+
+    With an adaptation model, predicted maps each allowed change to the completion the model
+    expects and the change is the model's pick; without one, rule_change() decides and predicted
+    is None. earlier_rates: completion of the weeks before previous, oldest first.
+    """
+    statuses = day_statuses(previous, logs)
+    options = change_options(profile, previous["days"], statuses)
+    if adapter is None:
+        change = rule_change(statuses)
+        return {"change": change, "days": options[change], "predicted": None}
+    last = adaptation_model.week_summary(statuses.values())
+    predicted = adaptation_model.predict(adapter, profile, last, list(earlier_rates), options)
+    change = adaptation_model.choose(predicted)
+    return {"change": change, "days": options[change], "predicted": predicted}
+
+
+def adaptation(profile, previous, logs, adapter=None, earlier_rates=()):
+    """("progress" | "same dose" | "reduce", days next week) from how last week went."""
+    result = adapt(profile, previous, logs, adapter, earlier_rates)
+    return result["change"], result["days"]
+
+
+def next_week(profile, exercises, previous, logs, model=None, adapter=None, earlier_rates=()):
     """The plan for the week after previous, adapted to the logs linked to previous."""
     statuses = day_statuses(previous, logs)
-    change, days = adaptation(profile, previous, logs)
+    change, days = adaptation(profile, previous, logs, adapter, earlier_rates)
     trend = {"progress": step_up, "same dose": None, "reduce": step_down}[change]
 
     ranked = ranked_groups(profile, exercises, model)
@@ -364,17 +421,24 @@ def load_plans(client, exercises, user_id=None):
     return result
 
 
-def plan_for_week(profile, exercises, saved, logs, start, model=None):
+def earlier_rates(saved, logs, before):
+    """Completion of each saved plan that starts before `before`, oldest first."""
+    return [completion_rate(plan, [log for log in logs if log.get("plan_id") == plan_id])
+            for plan_id, plan in saved if plan["week_start"] < before]
+
+
+def plan_for_week(profile, exercises, saved, logs, start, model=None, adapter=None):
     """This week's plan from the user's saved plans: week 1 if none, else adapted from the latest."""
     earlier = [(plan_id, plan) for plan_id, plan in saved if plan["week_start"] < start]
     if not earlier:
         return first_week(profile, exercises, start, model)
     plan_id, previous = earlier[-1]
-    plan = next_week(profile, exercises, previous, [log for log in logs if log["plan_id"] == plan_id], model)
+    plan = next_week(profile, exercises, previous, [log for log in logs if log["plan_id"] == plan_id], model,
+                     adapter, earlier_rates(earlier, logs, previous["week_start"]))
     return {**plan, "week_start": start}
 
 
-def current_plan(client, profile, exercises, today=None, model=None):
+def current_plan(client, profile, exercises, today=None, model=None, adapter=None):
     """This week's saved plan for one user, building and saving it first if there is none."""
     today = today or datetime.now(timezone.utc).date()
     start = week_start(today)
@@ -384,7 +448,7 @@ def current_plan(client, profile, exercises, today=None, model=None):
             return plan
     logs = fetch_all(client, "workout_logs", "workout_log_id, plan_id, day_number, completion_status",
                      "workout_log_id", profile["user_id"])
-    plan = plan_for_week(profile, exercises, saved, logs, start, model)
+    plan = plan_for_week(profile, exercises, saved, logs, start, model, adapter)
     ids, _ = sync_exercises(client, exercises)
     plan_row, exercise_rows = plan_rows(profile["user_id"], profile, plan, ids)
     client.table("workout_plans").insert(plan_row).execute()
@@ -398,6 +462,7 @@ def run_weekly(client, today=None, dry_run=False):
     start = week_start(today)
     exercises = recommender.load_exercises()
     model = exercise_ranker.load_model()
+    adapter = adaptation_model.load_model()
     saved = load_plans(client, exercises)
     logs = {}
     for log in fetch_all(client, "workout_logs", "workout_log_id, user_id, plan_id, day_number, completion_status",
@@ -411,7 +476,7 @@ def run_weekly(client, today=None, dry_run=False):
         user_plans = saved.get(profile["user_id"], [])
         if any(plan["week_start"] == start for _, plan in user_plans):
             continue
-        plan = plan_for_week(profile, exercises, user_plans, logs.get(profile["user_id"], []), start, model)
+        plan = plan_for_week(profile, exercises, user_plans, logs.get(profile["user_id"], []), start, model, adapter)
         plan_row, exercise_rows = plan_rows(profile["user_id"], profile, plan, ids)
         plans.append(plan_row)
         items += exercise_rows

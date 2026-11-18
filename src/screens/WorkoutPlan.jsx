@@ -300,6 +300,7 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
               <span className="text-gold">Adapted:</span> {plan.adaptation.text}{" "}
               <span className="text-muted">
                 (last week {Math.round(plan.adaptation.last_week_completion * 100)}% done
+                {plan.adaptation.predicted_completion != null ? `; expected ${Math.round(plan.adaptation.predicted_completion * 100)}% this week` : ""}
                 {plan.days_per_week !== plan.planned_per_profile ? `; ${plan.days_per_week} of your ${plan.planned_per_profile} days this week` : ""})
               </span>
             </p>
