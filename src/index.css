@@ -263,10 +263,11 @@ input[type="number"] {
 }
 
 /* ---------- Logo heartbeat (BrandMark) ---------- */
-/* A beat every 5s (BEAT_MS in BrandMark.jsx). Each beat takes the first 1.8s: a pulse sweeps along
+/* A beat every 5s (BEAT_MS in BrandMark.jsx). Each beat takes the first 2s: a pulse sweeps along
    the heartbeat line behind the letters (pathLength 100, a 14-long dash; 0-36%), the letters glow
    once, 5px to 10px around them, as it passes behind them (peak at 18.7%: the logo's centre is 52%
-   along the line), and a ring ripples out from the logo (HeartbeatBackdrop); then it rests. */
+   along the line), and a ring ripples out from the logo over about 1.07s (HeartbeatBackdrop),
+   lighting up cracks as it goes; then it rests. */
 .fs-trace {
   opacity: 0.7;
   animation: fs-trace 5s linear infinite;
@@ -300,13 +301,42 @@ input[type="number"] {
 @keyframes fs-ripple {
   0%, 18% { transform: scale(0.02); opacity: 0; }
   18.7% { transform: scale(0.04); opacity: 1; }
-  22.3% { transform: scale(0.36); opacity: 0.9; }
-  27.4% { transform: scale(0.68); opacity: 0.55; }
-  36%, 100% { transform: scale(1); opacity: 0; }
+  23.1% { transform: scale(0.36); opacity: 0.9; }
+  29.3% { transform: scale(0.68); opacity: 0.55; }
+  40%, 100% { transform: scale(1); opacity: 0; }
+}
+
+/* The cracks: a mesh over the ripple (src/fx/crackMesh.js), masked to a band just inside the ring's
+   edge, so the cracks light up as the edge passes over them. --fs-r follows the band's radius (about
+   54vmax at full size: 85vmax x 0.64); without @property support it steps instead of gliding. */
+@property --fs-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.fs-cracks {
+  position: absolute;
+  inset: 0;
+  --fs-r: 0px;
+  --fs-band: radial-gradient(circle at var(--fs-x) var(--fs-y), transparent calc(var(--fs-r) - 48px),
+    #000 calc(var(--fs-r) - 18px), #000 calc(var(--fs-r) - 4px), transparent calc(var(--fs-r) + 10px));
+  -webkit-mask-image: var(--fs-band);
+  mask-image: var(--fs-band);
+  filter: drop-shadow(0 0 3px #42e08b99);
+  opacity: 0;
+  animation: fs-cracks 5s linear infinite;
+}
+@keyframes fs-cracks {
+  0%, 18% { --fs-r: 0px; opacity: 0; }
+  18.7% { --fs-r: 2.2vmax; opacity: 0.85; }
+  23.1% { --fs-r: 19.6vmax; opacity: 0.75; }
+  29.3% { --fs-r: 37vmax; opacity: 0.45; }
+  40%, 100% { --fs-r: 54vmax; opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fs-ripple { display: none; }
+  .fs-ripple,
+  .fs-cracks { display: none; }
   .star-twinkle,
   .cloud-drift,
   .blink,
