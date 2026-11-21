@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 -4 86 92">
+  <!-- The FitSense mark for the browser tab (src/components/BrandMark.jsx without the heartbeat line). -->
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d6e4ff"/><stop offset="0.4" stop-color="#4d8dff"/><stop offset="1" stop-color="#2a5bb8"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff1a8"/><stop offset="0.4" stop-color="#f7b733"/><stop offset="1" stop-color="#c4831a"/>
+    </linearGradient>
+  </defs>
+  <rect x="-12" y="-4" width="86" height="92" rx="14" fill="#0b1224"/>
+  <path d="M0 36 H57 L53 46 H14 V54 H57 V81 H-3 L1 71 H44 V63 H0 Z" fill="url(#gold)" stroke="#7a4a06" stroke-width="2"/>
+  <path d="M19 2 H63 L59 14 H33 V21 H55 L51 31 H33 V54 H19 Z" fill="url(#blue)" stroke="#1a3a7a" stroke-width="2"/>
+</svg>
