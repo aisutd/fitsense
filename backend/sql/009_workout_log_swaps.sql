@@ -2,7 +2,7 @@
 -- "I couldn't train today" (gym closed, no equipment) from "this was too much".
 --
 -- skip_reason: why a plan day was skipped. 'no_equipment' and 'location' don't count as a
---              missed workout when next week's plan is adapted (adaptive_week_two.py).
+--              missed workout: not by next week's plan (weekly_plan.py), the HealthScore or the forecast.
 -- swapped:     the day was done with same-day swaps (POST /plans/{user_id}/swap).
 --
 -- Safe to run again.
