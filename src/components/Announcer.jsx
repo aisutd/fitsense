@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import PixelFx from "./PixelFx";
+import DecryptedText from "./reactbits/DecryptedText";
 import * as collectBurst from "../fx/pixelfx/fx/pickups/collect-burst.js";
 import * as confetti from "../fx/pixelfx/fx/ui/confetti.js";
 import { announcerMode, onAnnounce, RARITY, rewardLine } from "../achievements";
@@ -111,7 +112,11 @@ function Message({ item, index, count, mode, still, onNext, onClose }) {
           </span>
         </div>
         <h2 className="mt-2 text-3xl leading-tight sm:text-4xl" style={{ ...TITLE, textShadow: `0 0 14px ${rarity.color}88` }}>
-          {item.name}
+          {/* the title decrypts as the message arrives (React Bits DecryptedText) */}
+          {still ? item.name : (
+            <DecryptedText text={item.name} animateOn="view" sequential revealDirection="start" speed={35}
+              characters="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&@$" />
+          )}
         </h2>
         {mode !== "plain" && <p className="mt-1 italic text-muted">{item.description}</p>}
         <div className="my-4 h-[3px] w-full" style={{ background: `linear-gradient(90deg, ${rarity.color}, transparent)` }} aria-hidden="true" />

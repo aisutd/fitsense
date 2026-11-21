@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import DashboardHeader from "../components/DashboardHeader";
+import Counter from "../components/reactbits/Counter";
 import PixelCard from "../components/reactbits/PixelCard";
 import PixelIcon from "../components/PixelIcon";
 import ScoreRing from "../components/ScoreRing";
@@ -159,10 +160,11 @@ function SeriesCard({ series, view, horizon, side, delay, open, onToggle }) {
             <PixelIcon icon={series.icon} size={36} />
             <h3 className="text-2xl font-bold" style={{ color: series.color }}>{series.short}</h3>
           </div>
-          <motion.p key={horizon} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-3 text-4xl font-bold">
-            {number(view.value, series.digits)}
+          {/* digits roll to each horizon's value (React Bits Counter) */}
+          <p className="mt-3 text-4xl font-bold">
+            <Counter value={Number(view.value)} decimals={series.digits} fontSize="inherit" motionBlur={false} fade={0.15} />
             <span className="ml-2 text-xl text-muted">{series.unit}</span>
-          </motion.p>
+          </p>
           <p className="mt-2 text-muted">
             in {HORIZONS[horizon]}
             {view.change != null && ` · ${changeLabel(view.change, series.digits)}`}

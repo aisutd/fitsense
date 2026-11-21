@@ -6,6 +6,7 @@ import { ICONS } from "../icons";
 import { localToday, logWorkout, swapPlanDay, validationMessage } from "../api";
 import { queries } from "../queries";
 import { useCachedQuery } from "../queryCache";
+import { usePopIn } from "../fx/popIn";
 import { celebrate } from "../rewards";
 
 // three.js and the body model load only when a plan day is shown
@@ -302,13 +303,13 @@ function DayBody({ day, busy, onLog, onSwap, location }) {
 
 // Another plan day, folded to one line: when it's planned or how it went. Opening it unfolds the
 // exercises in the same box, e.g. to do a different day's workout today.
-function DayRow({ day, open, onToggle, busy, onLog, onSwap, location }) {
+function DayRow({ day, open, onToggle, busy, onLog, onSwap, location, pop }) {
   const status = dayStatus(day);
   const when = status
     ? `${status.label}${day.logged_on ? ` · ${shortDate(day.logged_on)}` : ""}`
     : day.scheduled_on ? weekdayName(day.scheduled_on) : "Not scheduled";
   return (
-    <li id={`plan-day-${day.day}`} className="px-frame scroll-mt-6 bg-night-800/90"
+    <motion.li {...pop} id={`plan-day-${day.day}`} className="px-frame scroll-mt-6 bg-night-800/90"
         style={{ "--frame": status ? status.color : "var(--color-night-600)" }}>
       <button
         type="button"
@@ -327,12 +328,13 @@ function DayRow({ day, open, onToggle, busy, onLog, onSwap, location }) {
           <DayBody day={day} busy={busy} onLog={onLog} onSwap={onSwap} location={location} />
         </div>
       )}
-    </li>
+    </motion.li>
   );
 }
 
 function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
   const { status, plan, error, reload } = usePlan(userId);
+  const pop = usePopIn();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
   const today = localToday();
@@ -467,12 +469,13 @@ function WorkoutPlan({ userId, profile, onNavigate, onLogout, onEditProfile }) {
           {otherDays.length > 0 && (
             <section className="mt-10" aria-labelledby="plan-other-days">
               <h2 id="plan-other-days" className="text-2xl">{todayDay ? "Rest of the week" : "This week's plan days"}</h2>
-              <ul className="mt-4 space-y-3">
+              {/* the days slide in one after another, like a React Bits AnimatedList */}
+              <motion.ul {...pop.list} className="mt-4 space-y-3">
                 {otherDays.map((day) => (
-                  <DayRow key={day.day} day={day} busy={busy} onLog={log} onSwap={swap} location={plan.location} open={openDay === day.day}
+                  <DayRow key={day.day} pop={pop.item} day={day} busy={busy} onLog={log} onSwap={swap} location={plan.location} open={openDay === day.day}
                           onToggle={() => setOpenDay((current) => (current === day.day ? null : day.day))} />
                 ))}
-              </ul>
+              </motion.ul>
             </section>
           )}
           {plan.recovery && !restToday && <RecoveryCard recovery={plan.recovery} />}

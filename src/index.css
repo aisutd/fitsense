@@ -172,6 +172,57 @@ input[type="number"] {
   display: none;
 }
 
+/* React Bits AnimatedList re-skinned as the pixel leaderboard: square rows with no tiles of their own
+   (each row draws its own stripes and zone colour), and a hard-edged highlight in the league's colour */
+.animated-list.px-list {
+  width: 100%;
+  border-radius: 0;
+  color: inherit;
+}
+
+.px-list .animated-list__viewport {
+  padding: 0 4px 0 0;
+  border-radius: 0;
+  scrollbar-color: var(--color-night-500) transparent;
+}
+
+.px-list .animated-list__viewport::-webkit-scrollbar-thumb {
+  border-radius: 0;
+  background: var(--color-night-500);
+}
+
+.px-list .animated-list__item {
+  display: block;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  cursor: default;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.px-list .animated-list__item:hover,
+.px-list .animated-list__item[data-selected]:not(:active),
+.px-list .animated-list__item:active {
+  filter: none;
+}
+
+.px-list .animated-list__rim {
+  display: none;
+}
+
+.px-list .animated-list__ring {
+  border-radius: 0;
+  box-shadow: inset 0 0 0 2px var(--al-ring);
+}
+
+.animated-list.px-list:has(> .animated-list__viewport:focus-visible) {
+  outline: 3px dashed var(--color-cyan);
+  outline-offset: 4px;
+}
+
 /* ---------- Background animation ---------- */
 @keyframes twinkle {
   0%, 100% { opacity: 0.25; }

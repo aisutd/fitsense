@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import PixelIcon from "./PixelIcon";
 import LeagueBanner from "./LeagueBanner";
 import PixelAvatar from "./PixelAvatar";
 import AchievementList from "./AchievementList";
+import AnimatedList from "./reactbits/AnimatedList";
+import Counter from "./reactbits/Counter";
+import CountUp from "./reactbits/CountUp";
+import PixelCard from "./reactbits/PixelCard";
+import ShinyText from "./reactbits/ShinyText";
+import { shade, tints } from "../fx/tints";
 import { demoAchievement, equipAvatar, purchaseAvatar, setAvatarBody } from "../api";
 import { queries } from "../queries";
 import { peekQuery, refetch } from "../queryCache";
@@ -25,14 +31,6 @@ const ZONES = {
   demotion: { color: "var(--color-nutrition)", label: "▼ Down" },
 };
 
-function shade(hex, amount) {
-  const n = parseInt(hex.slice(1), 16);
-  return `#${[n >> 16, (n >> 8) & 255, n & 255]
-    .map((c) => Math.round(amount > 0 ? c + (255 - c) * amount : c * (1 + amount)))
-    .map((c) => c.toString(16).padStart(2, "0"))
-    .join("")}`;
-}
-
 // A pixel gem in a rank's color, lit from the top left like the app's other icons
 const GEM_ART = ["..hhhhh..", ".hllllmm.", "hllllmmmd", "dmmmmmmmd", ".dmmmmmd.", "..dmmmd..", "...dmd...", "....d...."];
 function RankGem({ name, size = 28 }) {
@@ -40,19 +38,21 @@ function RankGem({ name, size = 28 }) {
   return <PixelIcon icon={{ art: GEM_ART, colors: { h: shade(color, 0.7), l: shade(color, 0.35), m: color, d: shade(color, -0.45) } }} size={size} />;
 }
 
+// The wallet: the coin flips when coins come in and the digits roll to the new balance (React Bits Counter)
 function FitCoin({ amount, animate = false }) {
   return (
-    <motion.span
-      key={`${amount}-${animate ? "reward" : "still"}`}
-      initial={animate ? { scale: 0.6, rotate: -25 } : false}
-      animate={{ scale: 1, rotate: 0 }}
-      transition={{ type: "spring", stiffness: 420, damping: 16 }}
-      className="inline-flex items-center gap-2 font-bold text-gold"
-    >
-      <span aria-hidden="true" className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-gold bg-[#473416] text-lg shadow-[0_0_16px_#f7b73355]">F</span>
-      <span>{amount.toLocaleString()}</span>
+    <span className="inline-flex items-center gap-2 font-bold text-gold">
+      <motion.span
+        key={`${amount}-${animate ? "reward" : "still"}`}
+        initial={animate ? { scale: 0.6, rotate: -25 } : false}
+        animate={{ scale: 1, rotate: 0 }}
+        transition={{ type: "spring", stiffness: 420, damping: 16 }}
+        aria-hidden="true"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-gold bg-[#473416] text-lg shadow-[0_0_16px_#f7b73355]"
+      >F</motion.span>
+      <Counter value={amount} fontSize="inherit" motionBlur={false} fade={0.15} />
       <span className="text-sm tracking-wide">FITCOINS</span>
-    </motion.span>
+    </span>
   );
 }
 
@@ -69,12 +69,54 @@ function Leaderboard({ league, onDemo, demoBusy }) {
   const { league: rank, season, standings } = league;
   const color = RANK_COLORS[rank.name] ?? "#4fd8ff";
   const listRef = useRef(null);
+  const items = useMemo(() => standings.map((player) => ({ ...player, id: player.place })), [standings]);
 
-  // start the list scrolled to your own row
+  // start the list scrolled to your own row (AnimatedList scrolls inside its own viewport; offsetTop,
+  // because rows still waiting to pop in are scaled down)
   useEffect(() => {
-    const list = listRef.current, me = list?.querySelector("[data-me]");
-    if (list && me) list.scrollTop = me.offsetTop - list.clientHeight / 2 + me.clientHeight / 2;
+    const viewport = listRef.current?.querySelector(".animated-list__viewport");
+    const track = viewport?.firstElementChild;
+    const row = viewport?.querySelector("[data-me]")?.closest(".animated-list__item");
+    if (viewport && track && row) {
+      viewport.scrollTop = track.offsetTop + row.offsetTop - viewport.clientHeight / 2 + row.offsetHeight / 2;
+    }
   }, [standings]);
+
+  function standingRow(player, i) {
+    const zone = player.zone ? ZONES[player.zone] : null;
+    const medal = MEDALS[player.place];
+    const promotionLine = player.zone === "promotion" && standings[i + 1]?.zone !== "promotion";
+    const demotionLine = player.zone === "demotion" && standings[i - 1]?.zone !== "demotion";
+    return (
+      <div className="w-full">
+        {demotionLine && <ZoneLine color={ZONES.demotion.color} label="Demotion line" />}
+        <div
+          data-me={player.is_current_user || undefined}
+          className={`flex items-center gap-3 border-l-4 px-3 py-2.5 ${player.is_current_user ? "bg-cyan/10" : i % 2 ? "bg-night-900/40" : ""}`}
+          style={{ borderLeftColor: zone?.color ?? "transparent", ...(medal && !player.is_current_user ? { background: `${medal}14` } : {}) }}
+        >
+          <span className="w-12 shrink-0 text-right text-2xl tabular-nums" style={{ color: medal ?? "var(--color-muted)" }}>
+            {player.place}
+          </span>
+          <span className="shrink-0" aria-hidden="true">
+            <PixelAvatar tier={rank.tier} level={player.fitness_level} body={player.avatar_body} skin={player.avatar_id}
+              crop="bust" size={32} title="" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-xl" style={medal ? { color: medal } : undefined}>
+            {player.name}
+            {player.is_current_user && <span className="px-frame ml-2 px-1.5 align-middle text-sm text-cyan [--frame:var(--color-cyan)]">YOU</span>}
+          </span>
+          {player.fitness_level && (
+            <span className="shrink-0 text-sm" title={fitnessLevel(player.fitness_level).label} style={{ color: fitnessLevel(player.fitness_level).color }}>
+              {fitnessLevel(player.fitness_level).short}
+            </span>
+          )}
+          {zone && <span className="shrink-0 text-sm" style={{ color: zone.color }}>{zone.label}</span>}
+        </div>
+        {promotionLine && <ZoneLine color={ZONES.promotion.color} label="Promotion line" />}
+      </div>
+    );
+  }
 
   return (
     <section className="px-frame px-glow mx-auto mt-8 max-w-3xl bg-night-800/90 p-5 sm:p-7" style={{ "--frame": color }} aria-labelledby="board-title">
@@ -89,7 +131,8 @@ function Leaderboard({ league, onDemo, demoBusy }) {
         </div>
         <div className="text-right">
           <p className="text-sm text-muted">Your place</p>
-          <p className="text-4xl">{rank.position ? `#${rank.position}` : "—"}<span className="text-lg text-muted">/{rank.members}</span></p>
+          <p className="text-4xl">{rank.position ? // climbs from the bottom of the board up to your place
+          <>#<CountUp from={rank.position} to={Math.max(rank.members, rank.position)} direction="down" duration={1.2} delay={0.2} /></> : "—"}<span className="text-lg text-muted">/{rank.members}</span></p>
         </div>
       </div>
       <p className="mt-3 text-lg">{movementText(rank.movement)}</p>
@@ -100,44 +143,28 @@ function Leaderboard({ league, onDemo, demoBusy }) {
         <span className="ml-auto">Top 20% move up · bottom 20% move down</span>
       </div>
 
-      <ol ref={listRef} className="relative mt-3 max-h-[32rem] overflow-y-auto pr-1" aria-label={`${rank.name} league standings`}>
-        {standings.map((player, i) => {
-          const zone = player.zone ? ZONES[player.zone] : null;
-          const medal = MEDALS[player.place];
-          const promotionLine = player.zone === "promotion" && standings[i + 1]?.zone !== "promotion";
-          const demotionLine = player.zone === "demotion" && standings[i - 1]?.zone !== "demotion";
-          return (
-            <li key={player.place}>
-              {demotionLine && <ZoneLine color={ZONES.demotion.color} label="Demotion line" />}
-              <div
-                data-me={player.is_current_user || undefined}
-                className={`flex items-center gap-3 border-l-4 px-3 py-2.5 ${player.is_current_user ? "bg-cyan/10" : i % 2 ? "bg-night-900/40" : ""}`}
-                style={{ borderLeftColor: zone?.color ?? "transparent", ...(medal && !player.is_current_user ? { background: `${medal}14` } : {}) }}
-              >
-                <span className="w-12 shrink-0 text-right text-2xl tabular-nums" style={{ color: medal ?? "var(--color-muted)" }}>
-                  {player.place}
-                </span>
-                <span className="shrink-0" aria-hidden="true">
-                  <PixelAvatar tier={rank.tier} level={player.fitness_level} body={player.avatar_body} skin={player.avatar_id}
-                    crop="bust" size={32} title="" />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-xl" style={medal ? { color: medal } : undefined}>
-                  {player.name}
-                  {player.is_current_user && <span className="px-frame ml-2 px-1.5 align-middle text-sm text-cyan [--frame:var(--color-cyan)]">YOU</span>}
-                </span>
-                {player.fitness_level && (
-                  <span className="shrink-0 text-sm" title={fitnessLevel(player.fitness_level).label} style={{ color: fitnessLevel(player.fitness_level).color }}>
-                    {fitnessLevel(player.fitness_level).short}
-                  </span>
-                )}
-                {zone && <span className="shrink-0 text-sm" style={{ color: zone.color }}>{zone.label}</span>}
-              </div>
-              {promotionLine && <ZoneLine color={ZONES.promotion.color} label="Promotion line" />}
-            </li>
-          );
-        })}
-        {!standings.length && <li className="py-8 text-center text-muted">You'll appear here after logging enough for a HealthScore.</li>}
-      </ol>
+      {/* React Bits AnimatedList: rows pop in as they scroll into view; hover or the arrow keys
+          (once the list has focus) highlight a row in the league's colour */}
+      <div ref={listRef} className="mt-3">
+        {standings.length > 0 ? (
+          <AnimatedList
+            className="px-list"
+            ariaLabel={`${rank.name} league standings`}
+            items={items}
+            renderItem={standingRow}
+            accentColor={color}
+            frame={false}
+            radius={0}
+            gap={0}
+            width="100%"
+            maxHeight="32rem"
+            fadeSize={40}
+            stagger={0.03}
+          />
+        ) : (
+          <p className="py-8 text-center text-muted">You'll appear here after logging enough for a HealthScore.</p>
+        )}
+      </div>
       <div className="mt-4 flex items-end justify-between gap-4">
         <p className="text-sm text-muted">
           Standings reflect HealthScore and consistency and refresh as players check in; the exact scoring stays behind the scenes.
@@ -174,18 +201,29 @@ function RankLadder({ leagues, current, share }) {
       </p>
       <ol className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-9">
         {leagues.map((name, i) => {
-          const here = i === current, color = RANK_COLORS[name];
-          return (
-            <li
-              key={name}
-              aria-current={here ? "true" : undefined}
-              className={`px-frame flex flex-col items-center gap-2 px-2 py-4 text-center ${here ? "px-glow bg-night-700/80" : "bg-night-800/90"}`}
-              style={{ "--frame": here ? color : "var(--color-night-600)" }}
-            >
+          const here = i === current, color = RANK_COLORS[name] ?? "#4fd8ff";
+          const body = (
+            <>
               <RankGem name={name} size={40} />
               <span className="text-lg leading-tight" style={{ color }}>{name}</span>
               <span className="text-xs text-muted">Rank {i + 1}</span>
-              {here && <span className="text-xs tracking-wider text-cyan">YOU ARE HERE</span>}
+              {here && <ShinyText text="YOU ARE HERE" color="#4fd8ff" shineColor="#ffffff" speed={1.6} delay={2} className="text-xs tracking-wider" />}
+            </>
+          );
+          if (!here) {
+            return (
+              <li key={name} className="px-frame flex flex-col items-center gap-2 bg-night-800/90 px-2 py-4 text-center">
+                {body}
+              </li>
+            );
+          }
+          // your rank sparkles in its colour (React Bits PixelCard)
+          return (
+            <li key={name} aria-current="true">
+              <PixelCard className="hs-card px-frame px-glow" style={{ "--frame": color }} colors={tints(color)} glowColor={color}
+                gap={6} speed={30} radius={0} tabIndex={-1}>
+                <div className="flex flex-col items-center gap-2 px-2 py-4 text-center">{body}</div>
+              </PixelCard>
             </li>
           );
         })}
@@ -355,7 +393,11 @@ function GamificationPanel({ userId }) {
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
                 {inventory.avatars.map((avatar) => (
-                  <article key={avatar.id} className={`border p-4 text-center ${avatar.equipped ? "border-cyan bg-cyan/10" : "border-night-700 bg-night-900/45"}`}>
+                  // each card sparkles on hover: cyan for avatars you own, gold for ones to buy (React Bits PixelCard)
+                  <PixelCard key={avatar.id} className={`hs-card border p-4 text-center ${avatar.equipped ? "border-cyan" : "border-night-700"}`}
+                    style={{ background: avatar.equipped ? "color-mix(in srgb, var(--color-cyan) 10%, var(--color-night-900))" : "color-mix(in srgb, var(--color-night-900) 45%, transparent)" }}
+                    colors={tints(avatar.owned ? "#4fd8ff" : "#f7b733")} glowColor={avatar.owned ? "#4fd8ff" : "#f7b733"}
+                    gap={6} speed={30} radius={0} intro={false} tabIndex={-1}>
                     <div className="flex justify-center" aria-hidden="true">
                       <PixelAvatar tier={league.league.tier} level={league.player?.fitness_level} body={body} skin={avatar.id}
                         crop="bust" size={84} title="" />
@@ -369,7 +411,7 @@ function GamificationPanel({ userId }) {
                     >
                       {busyAvatar === avatar.id ? "Saving…" : avatar.equipped ? "Equipped" : avatar.owned ? "Equip" : "Unlock"}
                     </button>
-                  </article>
+                  </PixelCard>
                 ))}
               </div>
               {message?.ok && <p role="status" className="mt-4 text-activity">{message.text}</p>}
