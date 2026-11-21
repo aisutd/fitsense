@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId } from "react";
 
 // The FitSense mark: a blue F whose stem runs down through a green S (the app's workout blue and
 // activity green), with a heartbeat line behind it, blue on the left and green on the right. The S's
@@ -22,9 +22,14 @@ const PULSE = "40,390 62,390 76,342 92,398 112,398 156,228 186,486 206,390 600,3
 const EXTRUDE = 7;   // the dark depth edge, down and to the right
 
 // One clock for every heartbeat animation (the line, the glow, the page ripple in HeartbeatBackdrop):
-// each starts at the same phase of a BEAT_MS cycle, whenever it mounts, so they always beat together.
-export const BEAT_MS = 1800;
-export const beatDelay = () => `-${Math.round(performance.now() % BEAT_MS)}ms`;
+// as each one mounts, its CSS animation is pinned to the start of the current BEAT_MS cycle on the
+// page's timeline, so they always beat together however late each one started. Use as a ref.
+export const BEAT_MS = 5000;   // a beat every 5 seconds (the CSS animations in index.css last this long)
+export function syncToBeat(element) {
+  const now = document.timeline?.currentTime;
+  if (!element?.getAnimations || now == null) return;
+  for (const animation of element.getAnimations()) animation.startTime = now - (now % BEAT_MS);
+}
 
 function Letter({ d, colors, fill }) {
   return (
@@ -37,7 +42,6 @@ function Letter({ d, colors, fill }) {
 
 function BrandMark({ size = 32, pulse = true, animated = true, className = "", title = "FitSense" }) {
   const id = useId().replace(/:/g, "");
-  const [delay] = useState(beatDelay);
   const view = pulse ? "30 0 780 650" : "215 0 480 650";
   const [, , vw, vh] = view.split(" ").map(Number);
   const label = title ? { role: "img", "aria-label": title } : { "aria-hidden": true };
@@ -64,14 +68,13 @@ function BrandMark({ size = 32, pulse = true, animated = true, className = "", t
             </linearGradient>
           </defs>
           <g fill="none" stroke={`url(#${id}-line)`} strokeLinejoin="round" strokeLinecap="round">
-            <polyline points={PULSE} strokeWidth="9" opacity="0.4" />
+            <polyline points={PULSE} strokeWidth="9" opacity="0.3" />
             {/* the bright pulse travelling along it, once per beat */}
-            {animated && <polyline points={PULSE} strokeWidth="13" pathLength="100" strokeDasharray="14 186" className="fs-trace" style={{ animationDelay: delay }} />}
+            {animated && <polyline points={PULSE} strokeWidth="13" pathLength="100" strokeDasharray="14 186" className="fs-trace" ref={syncToBeat} />}
           </g>
         </svg>
       )}
-      <svg {...svg} aria-hidden="true" className={animated ? "fs-glow" : undefined}
-           style={{ ...svg.style, animationDelay: animated ? delay : undefined }}>
+      <svg {...svg} aria-hidden="true" className={animated ? "fs-glow" : undefined} ref={animated ? syncToBeat : undefined}>
         <defs>
           {gradient("blue", BLUE)}
           {gradient("green", GREEN)}
