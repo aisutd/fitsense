@@ -38,6 +38,7 @@ This is a generic starter configuration. The team can add project-specific depen
    - `006_food_logging.sql`: FoodData Central search cache and the meal-review fields on `meal_items`
    - `007_food_search.sql`: search index and `search_fdc_foods` function for the local USDA food copy
    - `008_leagues_fitcoins.sql`: FitCoins wallet, avatar inventory, four-week league seasons, and promotion rules
+   - `009_workout_log_swaps.sql`: why a workout was skipped (`skip_reason`) and whether it was done with swapped exercises
    - `010_avatar_body.sql`: the male / female body of the pixel avatar on the league banner
    - `011_achievements.sql`: achievement rarity and details, and the `award_achievement` function that pays each one once
 3. Run `docker compose up -d --build`. The API is at http://localhost:8000, and interactive docs are at http://localhost:8000/docs.
@@ -272,6 +273,15 @@ the app does), each counted 5 times (`REAL_WEIGHT`); there are too few real week
 alone yet, and cross-validation on real users found the blend predicts best. On the simulation it finishes about 67% of plans vs 61% for
 the thresholds, with similar dose progression. The backend Docker image trains the bootstrap
 model at build time.
+
+**Excuses and swaps** (`day_swaps.py`, `POST /plans/{user_id}/swap`): when a plan day can't be done
+as planned, the player says why on the Plan tab. For broken or taken equipment, or not being able
+to get to the gym, each exercise that no longer fits is swapped for the closest one that does (same
+muscle group, category and muscles, movement type and level, sets and reps kept), for that day or
+every open day left this week, and saved to the week's plan. A day skipped for one of those reasons
+(`skip_reason` `no_equipment` or `location`) is excused: next week's plan leaves it out of last
+week's completion, the HealthScore leaves it out of the week's scheduled workouts, and the workouts
+forecast counts it as a held slot rather than a drop. Other skips still count as missed.
 
 **Recovery days**: every week keeps at least one (at most 6 training days, even if onboarding says 7).
 Training days are spread over the week with a recovery day between them where possible
