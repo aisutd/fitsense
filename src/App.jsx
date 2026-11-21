@@ -3,6 +3,7 @@ import { useLenis } from "lenis/react";
 import PixelBackground from "./components/PixelBackground";
 import PixelTransition from "./components/PixelTransition";
 import RewardLayer from "./components/RewardLayer";
+import HeartbeatBackdrop from "./components/HeartbeatBackdrop";
 import Announcer from "./components/Announcer";
 import { NameGreeting, Information, GoalScreen, Proficiency, WorkoutDays, WorkoutLocation } from "./screens/Onboarding";
 import HealthScore from "./screens/HealthScore";
@@ -285,6 +286,7 @@ function App() {
   return (
     <div className="scanlines relative min-h-screen font-pixel text-ink">
       <PixelBackground />
+      <HeartbeatBackdrop />
       {/* key remounts the screen so its entrance animation replays */}
       <div key={screen}>
         <Suspense fallback={<p role="status" className="relative z-10 p-10 text-lg text-muted">Loading…</p>}>{content}</Suspense>
