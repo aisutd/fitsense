@@ -125,12 +125,24 @@ def first_full_week(first_day, origin):
     return week_index(first_day, origin) + (0 if first_day.weekday() == 0 else 1)
 
 
+# Skips that weren't the player's doing (no equipment, couldn't get to the gym; backend/sql/009).
+EXCUSED_REASONS = ("no_equipment", "location")
+
+
+def held(log):
+    """A workout that counts toward the week: completed, or skipped for an excused reason (the
+    slot was held by circumstance, so it isn't a drop in the player's routine)."""
+    return log["completion_status"] == "completed" or (
+        log["completion_status"] == "skipped" and log.get("skip_reason") in EXCUSED_REASONS)
+
+
 def weekly_workouts(logs, first_day, origin):
-    """[(week index, completed workouts)] for every full, completed week since first_day, zeros included."""
+    """[(week index, workouts held)] for every full, completed week since first_day, zeros included.
+    Excused skips count (held()), so a week the gym was closed doesn't read as a decline."""
     first = first_full_week(first_day, origin)
     counts = {t: 0 for t in range(first, 1)}
     for log in logs:
-        if log["completion_status"] == "completed" and log.get("workout_date"):
+        if held(log) and log.get("workout_date"):
             t = week_index(to_date(log["workout_date"]), origin)
             if t in counts:
                 counts[t] += 1
@@ -360,9 +372,17 @@ def load_history(client, user_id=None):
     from app.concurrency import parallel
 
     history = {}
+
+    def read(table, columns, key):
+        if table == "workout_logs":
+            try:   # skip_reason once backend/sql/009 has added it
+                return fetch_all(client, table, columns + ", skip_reason", key, user_id)
+            except Exception:
+                return fetch_all(client, table, columns, key, user_id)
+        return fetch_all(client, table, columns, key, user_id)
+
     tables = list(HISTORY_TABLES.items())
-    results = parallel(*[lambda t=table, c=columns, k=key: fetch_all(client, t, c, k, user_id)
-                         for table, (columns, key) in tables])
+    results = parallel(*[lambda t=table, c=columns, k=key: read(t, c, k) for table, (columns, key) in tables])
     for (table, _), rows in zip(tables, results):
         for row in rows:
             history.setdefault(row["user_id"], {t: [] for t in HISTORY_TABLES})[table].append(row)

@@ -39,6 +39,7 @@ const DAY_NOTES = {
 
 const DAY_EMPTY = {
   rest_day: (d) => `Rest day. ${weekSoFar(d)}`,
+  excused: (d) => `Skipped for a reason out of your hands, so it doesn't count. ${weekSoFar(d)}`,
   before_signup: "Before you joined.",
   not_enough_meals_logged: "No meals logged this day.",
   no_sleep_logged: "No sleep logged for the night before.",
@@ -47,7 +48,10 @@ const DAY_EMPTY = {
 
 // Notes for a multi-day window.
 const WINDOW_NOTES = {
-  workouts: (d) => `${num(d.completed)} of ${plural(d.scheduled, "planned workout")} completed.`,
+  workouts: (d) =>
+    `${num(d.completed)} of ${plural(d.scheduled - (d.excused ?? 0), "planned workout")} completed${
+      d.excused ? ` (${plural(d.excused, "excused day")} left out)` : ""
+    }.`,
   nutrition: (d) =>
     `${num(d.average.calories)} of ${num(d.targets.calories)} kcal and ${num(d.average.protein_g)} of ${num(
       d.targets.protein_g
@@ -61,6 +65,7 @@ const WINDOW_NOTES = {
 
 const WINDOW_EMPTY = {
   no_workouts_logged: "No workouts logged yet.",
+  excused: "Every planned workout was excused.",
   not_enough_meals_logged: (d) => `Log meals on ${plural(d.days_needed, "day")} to unlock (${d.days_logged} so far).`,
   no_sleep_logged: "No sleep logged yet.",
   no_activity_logged: "No steps or active minutes logged yet.",
@@ -77,7 +82,7 @@ function note(key, details, isDay) {
   return typeof empty === "function" ? empty(details) : empty ?? "Not enough data yet.";
 }
 
-const NOT_EXPECTED = ["rest_day", "before_signup"];
+const NOT_EXPECTED = ["rest_day", "before_signup", "excused"];
 
 export function toViewModel(result) {
   const isDay = result.range?.key === "day";
