@@ -12,6 +12,8 @@ from fastapi import HTTPException
 from supabase import Client
 
 from app import healthscore as hs
+from app.cache import per_client
+from app.concurrency import parallel
 
 # range key -> (days back from end_date to the window's last day, window length)
 RANGE_WINDOWS = {"day": (0, 1), "week": (0, 7), "last-week": (7, 7), "month": (0, 30)}
@@ -98,17 +100,29 @@ def _newest_by_user(rows: list[dict], order_col: str = "created_at") -> dict[str
     return newest
 
 
-def load_contexts(supabase: Client, user_id: str | None = None) -> dict[str, UserContext]:
-    """Profile, active goals and planned workout days for one user (or everyone)."""
-    if user_id is not None:
-        profiles = [get_profile(supabase, user_id)]
-    else:
-        profiles = _select(supabase, "profiles", "user_id, created_at, age, height_cm, weight_kg, fitness_goal, workout_frequency", None)
-    plans = _newest_by_user(_select(supabase, "workout_plans", "user_id, created_at, days_per_week", user_id))
-    prefs = {r["user_id"]: r for r in _select(supabase, "user_preferences", "user_id, workout_days_per_week", user_id)}
-    nutrition = _newest_by_user(_select(supabase, "nutrition_goals", "user_id, created_at, daily_calorie_target, protein_target_g, carbs_target_g, fat_target_g", user_id))
-    sleep = _newest_by_user(_select(supabase, "sleep_goals", "user_id, created_at, target_hours", user_id))
-    progress = _select(supabase, "progress_goals", "user_id, created_at, goal_type, target_value", user_id, status="active")
+def load_contexts(supabase: Client, user_id: str | None = None, profile: dict | None = None) -> dict[str, UserContext]:
+    """Profile, active goals and planned workout days for one user (or everyone). profile: the
+    user's profiles row if the caller already has it, saving a read."""
+    def profiles_query():
+        if profile is not None:
+            return [profile]
+        if user_id is not None:
+            return [get_profile(supabase, user_id)]
+        return _select(supabase, "profiles", "user_id, created_at, age, height_cm, weight_kg, fitness_goal, workout_frequency", None)
+
+    # the six reads don't depend on each other, so they run at the same time
+    profiles, plan_rows, pref_rows, nutrition_rows, sleep_rows, progress = parallel(
+        profiles_query,
+        lambda: _select(supabase, "workout_plans", "user_id, created_at, days_per_week", user_id),
+        lambda: _select(supabase, "user_preferences", "user_id, workout_days_per_week", user_id),
+        lambda: _select(supabase, "nutrition_goals", "user_id, created_at, daily_calorie_target, protein_target_g, carbs_target_g, fat_target_g", user_id),
+        lambda: _select(supabase, "sleep_goals", "user_id, created_at, target_hours", user_id),
+        lambda: _select(supabase, "progress_goals", "user_id, created_at, goal_type, target_value", user_id, status="active"),
+    )
+    plans = _newest_by_user(plan_rows)
+    prefs = {r["user_id"]: r for r in pref_rows}
+    nutrition = _newest_by_user(nutrition_rows)
+    sleep = _newest_by_user(sleep_rows)
     steps = _newest_by_user([r for r in progress if r["goal_type"] == "daily_steps"])
     minutes = _newest_by_user([r for r in progress if r["goal_type"] == "daily_active_minutes"])
 
@@ -144,15 +158,23 @@ def _goals(profile: dict, days_per_week: int | None, goal: dict | None, sleep: d
 
 def workout_days_per_week(supabase: Client, user_id: str, profile: dict) -> int | None:
     """From the newest workout plan, else the user's preferences, else onboarding."""
-    return load_contexts(supabase, user_id)[user_id].days_per_week
+    return load_contexts(supabase, user_id, profile)[user_id].days_per_week
 
 
-def current_goals(supabase: Client, user_id: str, profile: dict) -> dict:
-    return load_contexts(supabase, user_id)[user_id].goals
+def current_goals(supabase: Client, user_id: str, profile: dict | None = None) -> dict:
+    return load_contexts(supabase, user_id, profile)[user_id].goals
+
+
+WEIGHTS_TTL = 60   # seconds: the weights hardly ever change, so they aren't read on every request
 
 
 def active_weights(supabase: Client) -> tuple[dict, str | None]:
-    """Newest health_score_config, or the spec's default weights."""
+    """Newest health_score_config, or the spec's default weights (kept for WEIGHTS_TTL per client)."""
+    weights, config_id = per_client(supabase, "health_score_weights", WEIGHTS_TTL, lambda: _read_weights(supabase))
+    return dict(weights), config_id
+
+
+def _read_weights(supabase: Client) -> tuple[dict, str | None]:
     config = _first(supabase.table("health_score_config").select("*").order("version", desc=True).limit(1).execute())
     if not config:
         return dict(hs.DEFAULT_WEIGHTS), None
@@ -165,15 +187,22 @@ def active_weights(supabase: Client) -> tuple[dict, str | None]:
 def load_logs(supabase: Client, start: date, end: date, user_id: str | None = None) -> dict[str, dict[str, list]]:
     """{user_id: {table: rows}} for logs dated start..end (one user, or everyone)."""
     logs: dict[str, dict[str, list]] = defaultdict(lambda: {t: [] for t in LOG_TABLES})
-    for table, (date_col, columns, filters) in LOG_TABLES.items():
-        def query(table=table, date_col=date_col, columns=columns, filters=filters):
+
+    def read(table, date_col, columns, filters):
+        def query():
             q = supabase.table(table).select(columns).gte(date_col, start.isoformat()).lte(date_col, end.isoformat())
             if user_id is not None:
                 q = q.eq("user_id", user_id)
             for column, value in filters.items():
                 q = q.eq(column, value)
             return q.order(date_col).order("user_id")
-        for row in all_rows(query):
+        return all_rows(query)
+
+    # the four tables are read at the same time
+    tables = list(LOG_TABLES.items())
+    results = parallel(*[lambda t=table, spec=spec: read(t, *spec) for table, spec in tables])
+    for (table, _), rows in zip(tables, results):
+        for row in rows:
             logs[row["user_id"]][table].append(row)
     return logs
 
@@ -238,21 +267,23 @@ def score(ctx: UserContext, logs: dict[str, list], weights: dict, start: date, e
 
 def calculate(supabase: Client, user_id: str, range_key: str, end_date: date) -> tuple[dict, str | None]:
     """HealthScore for one user and window. Returns (result, config_id)."""
-    ctx = load_contexts(supabase, user_id)[user_id]
     start, end, days = window(range_key, end_date)
     first, last = fetch_window(range_key, end_date)
-    logs = load_logs(supabase, first, last, user_id)[user_id]
-    weights, config_id = active_weights(supabase)
-    result = score(ctx, logs, weights, start, end, day=range_key == "day")
+    # settings, logs and weights don't depend on each other: read them all at once
+    contexts, logs, (weights, config_id) = parallel(
+        lambda: load_contexts(supabase, user_id),
+        lambda: load_logs(supabase, first, last, user_id),
+        lambda: active_weights(supabase),
+    )
+    result = score(contexts[user_id], logs[user_id], weights, start, end, day=range_key == "day")
     result["range"] = {"key": range_key, "start": start, "end": end, "days": days}
     return result, config_id
 
 
 def calculate_everyone(supabase: Client, start: date, end: date) -> dict[str, dict]:
     """HealthScore over start..end for every user, with a few bulk queries (league standings)."""
-    contexts = load_contexts(supabase)
-    logs = load_logs(supabase, start, end)
-    weights, _ = active_weights(supabase)
+    contexts, logs, (weights, _) = parallel(
+        lambda: load_contexts(supabase), lambda: load_logs(supabase, start, end), lambda: active_weights(supabase))
     return {uid: {**score(ctx, logs[uid], weights, start, end), "logs": logs[uid]} for uid, ctx in contexts.items()}
 
 

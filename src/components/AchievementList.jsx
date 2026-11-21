@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { getAchievements } from "../api";
+import { queries } from "../queries";
+import { peekQuery, refetch } from "../queryCache";
 import { announcerMode, RARITY, rewardLine, setAnnouncerMode } from "../achievements";
 
 // The System's achievements on the League tab, one category at a time. Earned ones show their title and
@@ -70,17 +71,18 @@ function Card({ item, mode }) {
 }
 
 function AchievementList({ userId }) {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(() => peekQuery(queries.achievements(userId)) ?? null);
   const [error, setError] = useState(null);
   const [category, setCategory] = useState(CATEGORIES[0].key);
   const [mode, setMode] = useState(announcerMode);
 
   useEffect(() => {
     let cancelled = false;
-    const load = () => getAchievements(userId)
+    // first load can share a prefetch; after an announcement, ask again
+    const load = (share) => refetch(queries.achievements(userId), { shareInFlight: share === true })
       .then((result) => { if (!cancelled) { setData(result); setError(null); } })
       .catch((e) => { if (!cancelled) setError(e.message); });
-    load();
+    load(true);
     window.addEventListener("fitsense:achievements", load);
     return () => { cancelled = true; window.removeEventListener("fitsense:achievements", load); };
   }, [userId]);

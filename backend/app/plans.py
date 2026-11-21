@@ -15,6 +15,8 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from app.concurrency import parallel
+
 STATUS_RANK = {"skipped": 0, "partial": 1, "completed": 2}
 ADAPTATION_TEXT = {
     "progress": "You finished last week's plan, so this week steps up.",
@@ -121,10 +123,11 @@ def plan_day_for(client, user_id: str, workout_date: date) -> tuple[str, int] | 
 def current_plan(client, user_id: str, today: date) -> dict:
     """This week's plan (built and saved on first view), with each day's status and why it changed."""
     wp = model_module("weekly_plan")
-    profile = _profile(client, user_id)
     start = wp.week_start(today)
-    saved = saved_plans(client, user_id)
-    logs = link_logs(saved, _plan_logs(client, user_id))
+    # the profile, saved plans and logs don't depend on each other
+    profile, saved, raw_logs = parallel(lambda: _profile(client, user_id), lambda: saved_plans(client, user_id),
+                                        lambda: _plan_logs(client, user_id))
+    logs = link_logs(saved, raw_logs)
 
     current = next(((pid, p) for pid, p in saved if p["week_start"] == start), None)
     if current is None:

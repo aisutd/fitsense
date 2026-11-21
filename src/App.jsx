@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useLenis } from "lenis/react";
 import PixelBackground from "./components/PixelBackground";
 import PixelTransition from "./components/PixelTransition";
@@ -6,11 +6,26 @@ import RewardLayer from "./components/RewardLayer";
 import Announcer from "./components/Announcer";
 import { NameGreeting, Information, GoalScreen, Proficiency, WorkoutDays, WorkoutLocation } from "./screens/Onboarding";
 import HealthScore from "./screens/HealthScore";
-import Forecast from "./screens/Forecast";
-import League from "./screens/League";
-import WorkoutPlan from "./screens/WorkoutPlan";
 import Auth from "./screens/Auth";
-import { fromApiProfile, getProfile, profileErrorMessage, saveProfile, toApiProfile } from "./api";
+import { fromApiProfile, getProfile, localToday, profileErrorMessage, saveProfile, toApiProfile } from "./api";
+import { queries } from "./queries";
+import { clearQueryCache, prefetch } from "./queryCache";
+
+// The other tabs load as separate chunks, fetched in the background once the dashboard is up
+// (warmUpTabs), so the first screen loads less and the tabs still open without waiting.
+const loadForecast = () => import("./screens/Forecast");
+const loadLeague = () => import("./screens/League");
+const loadPlan = () => import("./screens/WorkoutPlan");
+const Forecast = lazy(loadForecast);
+const League = lazy(loadLeague);
+const WorkoutPlan = lazy(loadPlan);
+const WARM_UP_DELAY = 1200;   // ms after the dashboard shows, so the first screen's own requests go first
+
+function warmUpTabs(userId) {
+  [loadPlan, loadForecast, loadLeague].forEach((load) => load().catch(() => {}));
+  [queries.plan(userId), queries.forecast(userId), queries.goals(userId), queries.league(userId),
+    queries.achievements(userId)].forEach(prefetch);
+}
 
 // Screens: -1 log in / sign up, 0 loading the player, 1-6 onboarding, 7 HealthScore, 8 Forecast, 9 Plan.
 const AUTH = -1;
@@ -76,10 +91,12 @@ function App() {
     setWorkoutLocation(p.workoutLocation);
   }
 
-  // Load the logged-in player's profile, then show the dashboard.
+  // Load the logged-in player's profile, then show the dashboard (whose HealthScore starts loading
+  // at the same time, rather than after the profile).
   useEffect(() => {
     if (screen !== LOADING) return;
     let cancelled = false;
+    prefetch(queries.healthScore(userId, localToday()));
     getProfile(userId)
       .then((p) => {
         if (cancelled) return;
@@ -116,7 +133,16 @@ function App() {
     }
   }
 
+  // Once the dashboard is up, quietly load the other tabs (their code and data).
+  const onDashboard = screen >= DASHBOARD && Boolean(userId);
+  useEffect(() => {
+    if (!onDashboard) return undefined;
+    const timer = window.setTimeout(() => warmUpTabs(userId), WARM_UP_DELAY);
+    return () => window.clearTimeout(timer);
+  }, [onDashboard, userId]);
+
   function logOutNow() {
+    clearQueryCache();
     rememberUser(null);
     setUserId(null);
     resetProfile();
@@ -124,6 +150,7 @@ function App() {
   }
 
   function handleLogout() {
+    clearQueryCache();
     rememberUser(null);
     setUserId(null);
     goTo(AUTH);
@@ -259,7 +286,9 @@ function App() {
     <div className="scanlines relative min-h-screen font-pixel text-ink">
       <PixelBackground />
       {/* key remounts the screen so its entrance animation replays */}
-      <div key={screen}>{content}</div>
+      <div key={screen}>
+        <Suspense fallback={<p role="status" className="relative z-10 p-10 text-lg text-muted">Loading…</p>}>{content}</Suspense>
+      </div>
       <PixelTransition phase={phase} onCovered={handleCovered} onRevealed={handleRevealed} />
       <RewardLayer />
       <Announcer />

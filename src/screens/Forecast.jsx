@@ -5,7 +5,8 @@ import PixelCard from "../components/reactbits/PixelCard";
 import PixelIcon from "../components/PixelIcon";
 import ScoreRing from "../components/ScoreRing";
 import { ICONS } from "../icons";
-import { getForecasts, getGoals } from "../api";
+import { queries } from "../queries";
+import { useCachedQuery } from "../queryCache";
 
 // The four forecasts, laid out like the HealthScore page: a card each around a ring. A card (or its
 // ring section) opens the full forecast, with its chart, below.
@@ -241,31 +242,16 @@ function HorizonPicker({ value, onChange }) {
   );
 }
 
+// The forecast; shown straight away when it's been loaded before (or prefetched), then refreshed.
 function useForecasts(userId) {
-  const [attempt, setAttempt] = useState(0);
-  const [state, setState] = useState({ status: "loading", data: null, error: null });
-
-  useEffect(() => {
-    let cancelled = false;
-    setState({ status: "loading", data: null, error: null });
-    getForecasts(userId)
-      .then((data) => !cancelled && setState({ status: "ready", data, error: null }))
-      .catch((error) => !cancelled && setState({ status: "error", data: null, error }));
-    return () => { cancelled = true; };
-  }, [userId, attempt]);
-
-  return { ...state, retry: () => setAttempt((value) => value + 1) };
+  const { status, data, error, reload } = useCachedQuery(queries.forecast(userId));
+  return { status, data, error, retry: reload };
 }
 
 // The steps goal the HealthScore uses (the ring shows the forecast against it).
 function useStepsTarget(userId) {
-  const [target, setTarget] = useState(DEFAULT_STEPS);
-  useEffect(() => {
-    let cancelled = false;
-    getGoals(userId).then((goals) => !cancelled && goals?.daily_steps && setTarget(goals.daily_steps)).catch(() => {});
-    return () => { cancelled = true; };
-  }, [userId]);
-  return target;
+  const { data } = useCachedQuery(queries.goals(userId));
+  return data?.daily_steps || DEFAULT_STEPS;
 }
 
 function Forecast({ userId, profile, onNavigate, onEditProfile, onLogout }) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import CountUp from "../components/reactbits/CountUp";
 import PixelCard from "../components/reactbits/PixelCard";
@@ -8,7 +8,9 @@ import LogPanel from "../components/LogPanel";
 import QuickLog from "../components/QuickLog";
 import { ICONS, levelIcon } from "../icons";
 import { CATEGORIES, toViewModel } from "../data/healthScore";
-import { getHealthScore, localToday } from "../api";
+import { localToday } from "../api";
+import { queries } from "../queries";
+import { useCachedQuery } from "../queryCache";
 import DateSwitcher from "../components/DateSwitcher";
 import DayLog from "../components/DayLog";
 import DashboardHeader from "../components/DashboardHeader";
@@ -189,22 +191,11 @@ const EMPTY = {
   scores: Object.fromEntries(CATEGORIES.map((c) => [c.key, { score: null, available: false, note: "Loading..." }])),
 };
 
+// The day's HealthScore; a day seen before shows straight away while it refreshes (queryCache.js).
 function useHealthScore(userId, date) {
-  const [state, setState] = useState({ status: "loading", data: EMPTY, error: null });
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    setState((s) => ({ ...s, status: "loading", error: null }));
-    getHealthScore(userId, "day", date)
-      .then((result) => !cancelled && setState({ status: "ready", data: toViewModel(result), error: null }))
-      .catch((error) => !cancelled && setState({ status: "error", data: EMPTY, error }));
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, date, attempt]);
-
-  return { ...state, retry: () => setAttempt((n) => n + 1) };
+  const { status, data, error, reload } = useCachedQuery(queries.healthScore(userId, date));
+  const view = useMemo(() => (data ? toViewModel(data) : EMPTY), [data]);
+  return { status, data: status === "error" ? EMPTY : view, error, retry: reload };
 }
 
 function StatusBanner({ status, error, data, onRetry }) {

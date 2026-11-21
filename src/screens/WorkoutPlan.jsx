@@ -1,9 +1,11 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { motion } from "motion/react";
 import DashboardHeader from "../components/DashboardHeader";
 import PixelIcon from "../components/PixelIcon";
 import { ICONS } from "../icons";
-import { getCurrentPlan, localToday, logWorkout, validationMessage } from "../api";
+import { localToday, logWorkout, validationMessage } from "../api";
+import { queries } from "../queries";
+import { useCachedQuery } from "../queryCache";
 import { celebrate } from "../rewards";
 
 // three.js and the body model load only when a plan day is shown
@@ -27,20 +29,10 @@ const GOALS = { lose_weight: "Lose weight", build_muscle: "Build muscle", improv
 const shortDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const weekdayName = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { weekday: "long" });
 
+// This week's plan; shown straight away when it's been loaded before, then refreshed (queryCache.js).
 function usePlan(userId) {
-  const [state, setState] = useState({ status: "loading", plan: null, error: null });
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    setState((s) => ({ ...s, status: "loading", error: null }));
-    getCurrentPlan(userId)
-      .then((plan) => !cancelled && setState({ status: "ready", plan, error: null }))
-      .catch((error) => !cancelled && setState({ status: "error", plan: null, error }));
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, attempt]);
-  return { ...state, reload: () => setAttempt((n) => n + 1) };
+  const { status, data, error, reload } = useCachedQuery(queries.plan(userId));
+  return { status, plan: data, error, reload };
 }
 
 function Exercise({ exercise }) {

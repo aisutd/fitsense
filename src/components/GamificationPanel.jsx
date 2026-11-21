@@ -4,7 +4,9 @@ import PixelIcon from "./PixelIcon";
 import LeagueBanner from "./LeagueBanner";
 import PixelAvatar from "./PixelAvatar";
 import AchievementList from "./AchievementList";
-import { demoAchievement, equipAvatar, getAvatarInventory, getGamification, getLeague, purchaseAvatar, setAvatarBody } from "../api";
+import { demoAchievement, equipAvatar, purchaseAvatar, setAvatarBody } from "../api";
+import { queries } from "../queries";
+import { peekQuery, refetch } from "../queryCache";
 import { LEAGUE_STYLES, fitnessLevel } from "../game/leagues";
 
 // The League tab: the season leaderboard front and center, then streaks, badges and the avatar shop,
@@ -193,11 +195,12 @@ function RankLadder({ leagues, current, share }) {
 }
 
 function GamificationPanel({ userId }) {
-  const [data, setData] = useState(EMPTY);
-  const [state, setState] = useState("loading");
+  // shown straight away when the League tab has been loaded before (or prefetched), then refreshed
+  const [data, setData] = useState(() => peekQuery(queries.league(userId)) ?? EMPTY);
+  const [state, setState] = useState(() => (peekQuery(queries.league(userId)) ? "ready" : "loading"));
   const [busyAvatar, setBusyAvatar] = useState(null);
   const [message, setMessage] = useState(null);
-  const previousCoins = useRef(null);
+  const previousCoins = useRef(data.inventory?.fitcoins ?? null);
   const [reward, setReward] = useState(null);
   const [bodyChoice, setBodyChoice] = useState(null);   // shown straight away while it saves
   const [savingBody, setSavingBody] = useState(false);
@@ -219,12 +222,10 @@ function GamificationPanel({ userId }) {
     }
   }
 
-  async function reload(showReward = false) {
+  async function reload(showReward = false, shareInFlight = false) {
     setState("loading");
     try {
-      const [league, inventory, status] = await Promise.all([
-        getLeague(userId), getAvatarInventory(userId), getGamification(userId),
-      ]);
+      const { league, inventory, status } = await refetch(queries.league(userId), { shareInFlight });
       if (showReward && previousCoins.current !== null && inventory.fitcoins > previousCoins.current) {
         setReward(inventory.fitcoins - previousCoins.current);
         window.setTimeout(() => setReward(null), 2400);
@@ -239,7 +240,7 @@ function GamificationPanel({ userId }) {
     }
   }
 
-  useEffect(() => { reload(false); }, [userId]);
+  useEffect(() => { reload(false, true); }, [userId]);
 
   // The demo button: the System announces Identity Crisis (api.js passes it to the Announcer).
   async function runDemo() {

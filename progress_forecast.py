@@ -355,10 +355,16 @@ HISTORY_TABLES = {
 
 
 def load_history(client, user_id=None):
-    """{user_id: {table: rows}} for one user, or for everyone when user_id is None."""
+    """{user_id: {table: rows}} for one user, or for everyone when user_id is None (the tables are
+    read at the same time)."""
+    from app.concurrency import parallel
+
     history = {}
-    for table, (columns, key) in HISTORY_TABLES.items():
-        for row in fetch_all(client, table, columns, key, user_id):
+    tables = list(HISTORY_TABLES.items())
+    results = parallel(*[lambda t=table, c=columns, k=key: fetch_all(client, t, c, k, user_id)
+                         for table, (columns, key) in tables])
+    for (table, _), rows in zip(tables, results):
+        for row in rows:
             history.setdefault(row["user_id"], {t: [] for t in HISTORY_TABLES})[table].append(row)
     return history
 
@@ -377,10 +383,16 @@ def health_context(client, profile, history, today):
     first_day = min([to_date(profile["created_at"])] + logged)
     first = max(origin + timedelta(weeks=first_full_week(first_day, origin)),
                 origin - timedelta(weeks=MAX_HEALTH_WEEKS - 1))
-    # One load of the user's settings and logs, then each week is scored in memory.
-    ctx = repo.load_contexts(client, profile["user_id"])[profile["user_id"]]
-    logs = repo.load_logs(client, first, origin + timedelta(days=6), profile["user_id"])[profile["user_id"]]
-    weights, _ = repo.active_weights(client)
+    # One load of the user's settings, logs and weights (at the same time, reusing the profile we
+    # already have), then each week is scored in memory.
+    from app.concurrency import parallel
+
+    contexts, logs, (weights, _) = parallel(
+        lambda: repo.load_contexts(client, profile["user_id"], profile),
+        lambda: repo.load_logs(client, first, origin + timedelta(days=6), profile["user_id"]),
+        lambda: repo.active_weights(client),
+    )
+    ctx, logs = contexts[profile["user_id"]], logs[profile["user_id"]]
     weeks = []
     monday = first
     while monday <= origin:
@@ -390,11 +402,14 @@ def health_context(client, profile, history, today):
 
 
 def forecast_from_supabase(client, user_id, today=None, context=health_context):
+    from app.concurrency import parallel
+
     today = today or datetime.now(timezone.utc).date()
-    profiles = fetch_all(client, "profiles", "*", "user_id", user_id)
+    profiles, history = parallel(lambda: fetch_all(client, "profiles", "*", "user_id", user_id),
+                                 lambda: load_history(client, user_id))
     if not profiles:
         raise LookupError(f"No profile found for user {user_id}.")
-    history = load_history(client, user_id).get(user_id, {t: [] for t in HISTORY_TABLES})
+    history = history.get(user_id, {t: [] for t in HISTORY_TABLES})
     return forecast_user(profiles[0], history, today, **context(client, profiles[0], history, today))
 
 
