@@ -281,7 +281,30 @@ input[type="number"] {
   52% { filter: drop-shadow(0 0 10px #4d8dffcc) drop-shadow(0 0 10px #42e08baa); }
 }
 
+/* ...and a ring ripples out across the page from the logo (HeartbeatBackdrop), starting as the glow
+   peaks: a faint wash inside, a brighter blue-to-green band at the edge, fading as it grows. */
+.fs-ripple {
+  position: absolute;
+  width: 170vmax;
+  height: 170vmax;
+  margin: -85vmax 0 0 -85vmax;
+  border-radius: 50%;
+  background: radial-gradient(circle, #42e08b0d 0%, #4d8dff1f 50%, #4d8dff40 61%, #42e08b55 67%, #42e08b00 72%);
+  opacity: 0;
+  transform: scale(0.02);
+  will-change: transform, opacity;
+  animation: fs-ripple 1.8s linear infinite;
+}
+@keyframes fs-ripple {   /* quick at first, then slowing and fading as it spreads */
+  0%, 50% { transform: scale(0.02); opacity: 0; }
+  52% { transform: scale(0.04); opacity: 1; }
+  62% { transform: scale(0.36); opacity: 0.9; }
+  76% { transform: scale(0.68); opacity: 0.55; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .fs-ripple { display: none; }
   .star-twinkle,
   .cloud-drift,
   .blink,

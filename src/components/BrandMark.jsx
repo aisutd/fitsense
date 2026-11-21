@@ -1,10 +1,11 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 
 // The FitSense mark: a blue F whose stem runs down through a green S (the app's workout blue and
 // activity green), with a heartbeat line behind it, blue on the left and green on the right. The S's
 // top and bottom bars pass in front of the stem and its middle splits around it, so the letters
-// interlock. Each beat a bright pulse sweeps along the line, and the letters glow once as it passes
-// behind them (CSS in index.css: .fs-trace, .fs-glow); both stay still with reduced motion. Vector,
+// interlock. Each beat a bright pulse sweeps along the line, the letters glow once as it passes
+// behind them, and a ring ripples out across the page from the logo (HeartbeatBackdrop; CSS in
+// index.css: .fs-trace, .fs-glow, .fs-ripple); all of it stays still with reduced motion. Vector,
 // so it's crisp at any size. pulse={false} drops the line (public/favicon.svg is the mark without it).
 
 const BLUE = { light: "#d6e4ff", base: "#4d8dff", shadow: "#2a5bb8", edge: "#13306b" };
@@ -20,6 +21,11 @@ const S_BOTTOM = "M422 412 H582 L600 430 V617 L582 635 H268 L250 617 V570 L268 5
 const PULSE = "40,390 62,390 76,342 92,398 112,398 156,228 186,486 206,390 600,390 668,390 684,365 700,395 716,395 742,226 774,500 796,392 800,390";
 const EXTRUDE = 7;   // the dark depth edge, down and to the right
 
+// One clock for every heartbeat animation (the line, the glow, the page ripple in HeartbeatBackdrop):
+// each starts at the same phase of a BEAT_MS cycle, whenever it mounts, so they always beat together.
+export const BEAT_MS = 1800;
+export const beatDelay = () => `-${Math.round(performance.now() % BEAT_MS)}ms`;
+
 function Letter({ d, colors, fill }) {
   return (
     <>
@@ -31,6 +37,7 @@ function Letter({ d, colors, fill }) {
 
 function BrandMark({ size = 32, pulse = true, animated = true, className = "", title = "FitSense" }) {
   const id = useId().replace(/:/g, "");
+  const [delay] = useState(beatDelay);
   const view = pulse ? "30 0 780 650" : "215 0 480 650";
   const [, , vw, vh] = view.split(" ").map(Number);
   const label = title ? { role: "img", "aria-label": title } : { "aria-hidden": true };
@@ -43,7 +50,9 @@ function BrandMark({ size = 32, pulse = true, animated = true, className = "", t
     </linearGradient>
   );
   return (
-    <span className={`relative inline-block shrink-0 ${className}`} style={{ width: (size * vw) / vh, height: size }} {...label}>
+    // data-heartbeat: where HeartbeatBackdrop's ripple starts
+    <span className={`relative inline-block shrink-0 ${className}`} style={{ width: (size * vw) / vh, height: size }}
+          data-heartbeat={pulse && animated ? "" : undefined} {...label}>
       {pulse && (
         <svg {...svg} aria-hidden="true">
           <defs>
@@ -57,11 +66,12 @@ function BrandMark({ size = 32, pulse = true, animated = true, className = "", t
           <g fill="none" stroke={`url(#${id}-line)`} strokeLinejoin="round" strokeLinecap="round">
             <polyline points={PULSE} strokeWidth="9" opacity="0.4" />
             {/* the bright pulse travelling along it, once per beat */}
-            {animated && <polyline points={PULSE} strokeWidth="13" pathLength="100" strokeDasharray="14 186" className="fs-trace" />}
+            {animated && <polyline points={PULSE} strokeWidth="13" pathLength="100" strokeDasharray="14 186" className="fs-trace" style={{ animationDelay: delay }} />}
           </g>
         </svg>
       )}
-      <svg {...svg} aria-hidden="true" className={animated ? "fs-glow" : undefined}>
+      <svg {...svg} aria-hidden="true" className={animated ? "fs-glow" : undefined}
+           style={{ ...svg.style, animationDelay: animated ? delay : undefined }}>
         <defs>
           {gradient("blue", BLUE)}
           {gradient("green", GREEN)}
