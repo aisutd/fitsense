@@ -204,8 +204,7 @@ def training_rows_from_supabase(client, today=None):
                 for row in weekly_plan.fetch_all(client, "profiles", "*, user_preferences(available_equipment), "
                                                  "user_gamification(total_xp)", "user_id")}
     user_logs = {}
-    for log in weekly_plan.fetch_all(client, "workout_logs", "workout_log_id, user_id, plan_id, day_number, "
-                                     "workout_date, completion_status", "workout_log_id"):
+    for log in weekly_plan.fetch_logs(client, "workout_log_id, user_id, plan_id, day_number, workout_date, completion_status"):
         user_logs.setdefault(log["user_id"], []).append(log)
     out = []
     for user_id, saved in weekly_plan.load_plans(client, exercises).items():

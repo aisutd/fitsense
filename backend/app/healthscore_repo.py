@@ -16,7 +16,7 @@ from app import healthscore as hs
 # range key -> (days back from end_date to the window's last day, window length)
 RANGE_WINDOWS = {"day": (0, 1), "week": (0, 7), "last-week": (7, 7), "month": (0, 30)}
 
-NOT_EXPECTED = ("rest_day", "before_signup")   # workout reasons that don't make a day's score provisional
+NOT_EXPECTED = ("rest_day", "before_signup", "excused")   # workout reasons that don't make a day's score provisional
 
 PAGE = 1000   # PostgREST returns at most this many rows per request by default
 
@@ -173,9 +173,29 @@ def load_logs(supabase: Client, start: date, end: date, user_id: str | None = No
             for column, value in filters.items():
                 q = q.eq(column, value)
             return q.order(date_col).order("user_id")
-        for row in all_rows(query):
+        if table == "workout_logs":
+            rows = _workout_rows(query, columns)
+        else:
+            rows = all_rows(query)
+        for row in rows:
             logs[row["user_id"]][table].append(row)
     return logs
+
+
+def _workout_rows(query, columns):
+    """Workout logs with skip_reason, once backend/sql/009 has added it (before that, every skip
+    counts as missed, as it used to)."""
+    try:
+        return all_rows(lambda: query(columns=columns + ", skip_reason"))
+    except Exception:
+        return all_rows(query)
+
+
+def workout_status(log: dict) -> str:
+    """A log's status for scoring: an excused skip (no equipment, couldn't get to the gym) is hs.EXCUSED."""
+    if log.get("completion_status") == "skipped" and log.get("skip_reason") in hs.EXCUSED_REASONS:
+        return hs.EXCUSED
+    return log["completion_status"]
 
 
 def fetch_window(range_key: str, end_date: date) -> tuple[date, date]:
@@ -199,10 +219,11 @@ def score(ctx: UserContext, logs: dict[str, list], weights: dict, start: date, e
     if day:
         monday = week_monday(end)
         earlier = dated("workout_logs", "workout_date", monday, end - timedelta(days=1))
-        done_earlier = sum(hs.STATUS_CREDIT.get(w["completion_status"], 0.0) for w in earlier)
+        done_earlier = sum(hs.STATUS_CREDIT.get(workout_status(w), 0.0) for w in earlier)
+        excused_days = {_day(w["workout_date"]) for w in earlier if workout_status(w) == hs.EXCUSED}
         workouts = hs.score_workout_day(
-            [w["completion_status"] for w in dated("workout_logs", "workout_date", end, end)],
-            ctx.days_per_week, done_earlier, 7 - end.weekday(),
+            [workout_status(w) for w in dated("workout_logs", "workout_date", end, end)],
+            ctx.days_per_week, done_earlier, 7 - end.weekday(), len(excused_days),
         )
         signed_up = ctx.profile.get("created_at")
         if workouts.details.get("status") == "missed" and signed_up and end < _day(signed_up):
@@ -210,7 +231,7 @@ def score(ctx: UserContext, logs: dict[str, list], weights: dict, start: date, e
         night = end - timedelta(days=1)   # the night you woke up from
         sleep_rows = dated("sleep_logs", "sleep_date", night, night)
     else:
-        workouts = hs.score_workouts([w["completion_status"] for w in dated("workout_logs", "workout_date", start, end)],
+        workouts = hs.score_workouts([workout_status(w) for w in dated("workout_logs", "workout_date", start, end)],
                                      ctx.days_per_week, (end - start).days + 1)
         sleep_rows = dated("sleep_logs", "sleep_date", start, end)
 

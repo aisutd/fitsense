@@ -4,6 +4,7 @@ import DashboardHeader from "../components/DashboardHeader";
 import PixelCard from "../components/reactbits/PixelCard";
 import PixelIcon from "../components/PixelIcon";
 import ScoreRing from "../components/ScoreRing";
+import WorkoutWhatIf from "../components/WorkoutWhatIf";
 import { ICONS } from "../icons";
 import { getForecasts, getGoals } from "../api";
 
@@ -398,6 +399,7 @@ function Forecast({ userId, profile, onNavigate, onEditProfile, onLogout }) {
                     note={opened.key === "weight_kg" && data.notes?.weight_from_profile_only
                       ? `From your profile weight and goal, assuming you keep doing ${Math.round((data.notes.weight_adherence ?? 1) * 100)}% of your planned workouts. Log weigh-ins to make it yours.`
                       : null}>
+                    {opened.key === "workouts_per_week" && data.workout_scenarios && <WorkoutWhatIf scenarios={data.workout_scenarios} />}
                     {opened.key === "health_score" && healthRows.length > 0 && (
                       <div className="mt-6 border-t border-night-700 pt-5">
                         <div className="flex flex-wrap items-end justify-between gap-3">

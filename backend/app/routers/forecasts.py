@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from postgrest.exceptions import APIError
 from supabase import Client
 
+from app import forecast_scenarios
+from app import healthscore_repo as repo
 from app.database import get_supabase
 
 router = APIRouter(prefix="/forecasts", tags=["forecasts"])
@@ -32,6 +34,7 @@ def get_forecasts(user_id: UUID, supabase: Client = Depends(get_supabase)):
     try:
         engine = _forecast_engine()
         result = engine.forecast_from_supabase(supabase, str(user_id))
+        planned = repo.load_contexts(supabase, str(user_id))[str(user_id)].days_per_week
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "source": "live_model",
@@ -39,6 +42,8 @@ def get_forecasts(user_id: UUID, supabase: Client = Depends(get_supabase)):
             "forecasts": engine.forecast_rows(str(user_id), result, with_ranges=True),
             # the full weeks each forecast was fitted on, oldest first
             "history": engine.forecast_history(result),
+            # HealthScore 1/4/12 weeks ahead for 0..plan+1 workouts a week, plus the current pace
+            "workout_scenarios": forecast_scenarios.workout_scenarios(result, planned),
             "notes": {
                 "weight_from_profile_only": "weight_kg" in result and result["weight_kg"]["weeks_of_data"] <= 1,
                 "weight_adherence": round(result["weight_kg"].get("adherence", 1.0), 2) if "weight_kg" in result else None,

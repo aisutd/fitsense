@@ -17,6 +17,10 @@ one the user is expected to finish (adapt()); a mostly missed week still can't s
 On top of that, an exercise that was only on skipped days is swapped for the next-ranked one in
 its group, and one on a partial or skipped day steps down. Doses never leave the guideline range.
 
+A day skipped with an excuse that wasn't up to the player (workout_logs.skip_reason 'no_equipment'
+or 'location', see day_swaps.py and backend/sql/009) isn't counted as missed: it's left out of the
+week's completion, and its exercises are kept as they were.
+
 Every week keeps at least one recovery day (MAX_TRAINING_DAYS = 6). week_schedule() places the
 training days on the calendar with recovery days between them where the week allows (ACSM: about
 48 h before training the same muscles again), and a recovery day gets an optional light routine:
@@ -48,6 +52,9 @@ REPEAT_RATE = 0.6
 REP_STEP = 2
 CARDIO_STEP = 5  # minutes
 STATUS_RANK = {"skipped": 0, "partial": 1, "completed": 2}
+# Skip reasons that weren't the player's doing: the equipment wasn't there, or they couldn't get to
+# the gym. Such a skipped day isn't counted as missed (see counted_statuses()).
+EXCUSED_REASONS = {"no_equipment", "location"}
 # Supabase allows large inserts, but smaller ones fail more gracefully.
 INSERT_CHUNK = 500
 # At least one full recovery day a week, even for a 7-day workout_frequency.
@@ -166,8 +173,23 @@ def day_statuses(plan, logs):
     return statuses
 
 
+def excused_days(plan, logs):
+    """Plan days that were only skipped, with an excuse that wasn't up to the player."""
+    statuses = day_statuses(plan, logs)
+    return {log["day_number"] for log in logs
+            if log.get("skip_reason") in EXCUSED_REASONS and statuses.get(log.get("day_number")) == "skipped"}
+
+
+def counted_statuses(plan, logs):
+    """day_statuses() without the excused days: what the week is judged by."""
+    excused = excused_days(plan, logs)
+    return {day: status for day, status in day_statuses(plan, logs).items() if day not in excused}
+
+
 def completion_rate(plan, logs):
-    return adaptation_model.week_summary(day_statuses(plan, logs).values())["rate"]
+    """Share of the week's plan done, leaving out excused days (1.0 when every day was excused)."""
+    statuses = counted_statuses(plan, logs)
+    return adaptation_model.week_summary(statuses.values())["rate"] if statuses else 1.0
 
 
 def rule_change(statuses):
@@ -195,7 +217,9 @@ def adapt(profile, previous, logs, adapter=None, earlier_rates=()):
     expects and the change is the model's pick; without one, rule_change() decides and predicted
     is None. earlier_rates: completion of the weeks before previous, oldest first.
     """
-    statuses = day_statuses(previous, logs)
+    statuses = counted_statuses(previous, logs)
+    if not statuses:   # every day was excused: nothing to judge the week by, so keep it as it was
+        return {"change": "same dose", "days": min(training_days(profile), previous["days"]), "predicted": None}
     options = change_options(profile, previous["days"], statuses)
     if adapter is None:
         change = rule_change(statuses)
@@ -215,6 +239,8 @@ def adaptation(profile, previous, logs, adapter=None, earlier_rates=()):
 def next_week(profile, exercises, previous, logs, model=None, adapter=None, earlier_rates=()):
     """The plan for the week after previous, adapted to the logs linked to previous."""
     statuses = day_statuses(previous, logs)
+    for day in excused_days(previous, logs):
+        statuses[day] = "completed"   # not the player's doing: keep that day's exercises and doses
     change, days = adaptation(profile, previous, logs, adapter, earlier_rates)
     trend = {"progress": step_up, "same dose": None, "reduce": step_down}[change]
 
@@ -446,14 +472,22 @@ def current_plan(client, profile, exercises, today=None, model=None, adapter=Non
     for _, plan in saved:
         if plan["week_start"] == start:
             return plan
-    logs = fetch_all(client, "workout_logs", "workout_log_id, plan_id, day_number, completion_status",
-                     "workout_log_id", profile["user_id"])
+    logs = fetch_logs(client, "workout_log_id, user_id, plan_id, day_number, completion_status", profile["user_id"])
     plan = plan_for_week(profile, exercises, saved, logs, start, model, adapter)
     ids, _ = sync_exercises(client, exercises)
     plan_row, exercise_rows = plan_rows(profile["user_id"], profile, plan, ids)
     client.table("workout_plans").insert(plan_row).execute()
     insert(client, "plan_exercises", exercise_rows)
     return plan
+
+
+def fetch_logs(client, columns, user_id=None):
+    """workout_logs rows with skip_reason too, once backend/sql/009 has added it (before that, every
+    skip counts as missed, as it used to)."""
+    try:
+        return fetch_all(client, "workout_logs", columns + ", skip_reason", "workout_log_id", user_id)
+    except Exception:
+        return fetch_all(client, "workout_logs", columns, "workout_log_id", user_id)
 
 
 def run_weekly(client, today=None, dry_run=False):
@@ -465,8 +499,7 @@ def run_weekly(client, today=None, dry_run=False):
     adapter = adaptation_model.load_model()
     saved = load_plans(client, exercises)
     logs = {}
-    for log in fetch_all(client, "workout_logs", "workout_log_id, user_id, plan_id, day_number, completion_status",
-                         "workout_log_id"):
+    for log in fetch_logs(client, "workout_log_id, user_id, plan_id, day_number, completion_status"):
         logs.setdefault(log["user_id"], []).append(log)
     ids, _ = sync_exercises(client, exercises, dry_run)
     plans, items = [], []

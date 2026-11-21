@@ -77,25 +77,37 @@ def workout_score(completed: float, scheduled: int) -> float:
 
 
 def score_workouts(statuses: list[str], days_per_week: int | None, window_days: int) -> CategoryResult:
-    """statuses: completion_status of each workout log in the window."""
+    """statuses: completion_status of each workout log in the window, or EXCUSED for a skip that
+    wasn't the player's doing (no equipment, couldn't get to the gym): those come off the scheduled
+    workouts instead of counting as missed."""
     completed = statuses.count("completed") + PARTIAL_WORKOUT_CREDIT * statuses.count("partial")
+    excused = statuses.count(EXCUSED)
     details = {"logged": len(statuses), "completed": completed}
     if not days_per_week:
         return CategoryResult(None, {**details, "reason": "no_workout_plan"})
     scheduled = scheduled_workouts(days_per_week, window_days)
     details["scheduled"] = scheduled
+    if excused:
+        details["excused"] = excused
+        scheduled = scheduled - excused
     if not statuses:
         return CategoryResult(None, {**details, "reason": "no_workouts_logged"})
+    if scheduled <= 0 or excused == len(statuses):
+        return CategoryResult(None, {**details, "reason": "excused"})
     return CategoryResult(workout_score(completed, scheduled), details)
 
 
 STATUS_CREDIT = {"completed": 1.0, "partial": PARTIAL_WORKOUT_CREDIT, "skipped": 0.0}
+# A skipped workout whose reason wasn't up to the player (the equipment wasn't there, they couldn't
+# get to the gym): healthscore_repo passes it as this status, and it isn't counted as missed.
+EXCUSED = "excused"
+EXCUSED_REASONS = ("no_equipment", "location")
 # Workout plans keep at least one recovery day a week (weekly_plan.MAX_TRAINING_DAYS).
 MAX_WORKOUT_DAYS = 6
 
 
 def score_workout_day(statuses: list[str], days_per_week: int | None, done_earlier_this_week: float,
-                      days_left_this_week: int) -> CategoryResult:
+                      days_left_this_week: int, excused_earlier_this_week: int = 0) -> CategoryResult:
     """One day's workout score.
 
     statuses: workouts logged that day (the best one counts: completed 100, partial 50, skipped 0).
@@ -103,16 +115,21 @@ def score_workout_day(statuses: list[str], days_per_week: int | None, done_earli
     plan impossible (more workouts still needed than days left after today), which scores 0.
     done_earlier_this_week: credit of workouts from Monday up to the day before.
     days_left_this_week: days from this day to Sunday, including this day (Monday = 7).
+    An EXCUSED day is left out like a rest day, and excused days earlier in the week come off the
+    week's plan (excused_earlier_this_week), so they don't make a later day look missed.
     """
     details = {"logged": len(statuses), "planned_per_week": days_per_week,
                "done_earlier_this_week": done_earlier_this_week}
     if not days_per_week:
         return CategoryResult(None, {**details, "reason": "no_workout_plan"})
     days_per_week = min(days_per_week, MAX_WORKOUT_DAYS)
+    if statuses and all(s == EXCUSED for s in statuses):
+        return CategoryResult(None, {**details, "status": EXCUSED, "reason": "excused"})
+    statuses = [s for s in statuses if s != EXCUSED]
     if statuses:
         best = max(statuses, key=lambda s: STATUS_CREDIT.get(s, 0.0))
         return CategoryResult(STATUS_CREDIT.get(best, 0.0) * 100.0, {**details, "status": best})
-    still_needed = days_per_week - done_earlier_this_week
+    still_needed = days_per_week - done_earlier_this_week - excused_earlier_this_week
     if still_needed > days_left_this_week - 1 + 1e-9:
         return CategoryResult(0.0, {**details, "status": "missed"})
     return CategoryResult(None, {**details, "reason": "rest_day"})

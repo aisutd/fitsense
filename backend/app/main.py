@@ -1,3 +1,5 @@
+import os
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import Client
@@ -8,7 +10,8 @@ from app.routers import auth, forecasts, gamification, healthscore, logs, meals,
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    # the frontend's address; FRONTEND_ORIGINS (comma-separated) adds others, e.g. a second dev server
+    allow_origins=["http://localhost:5173", *filter(None, os.getenv("FRONTEND_ORIGINS", "").split(","))],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
