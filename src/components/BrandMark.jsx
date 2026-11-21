@@ -1,59 +1,74 @@
 import { useId } from "react";
 
-// The FitSense mark: a blue F over a gold S (the app's workout blue and gold), with a heartbeat line
-// running behind it, blue on the left and gold on the right. A bright pulse sweeps along the line
-// and the letters glow with a heartbeat (CSS in index.css: .fs-trace, .fs-glow); both stay still
-// with reduced motion. Vector, so it's crisp at any size. pulse={false} drops the heartbeat line
-// (public/favicon.svg is the mark without it).
+// The FitSense mark: a blue F whose stem runs down through a green S (the app's workout blue and
+// activity green), with a heartbeat line behind it, blue on the left and green on the right. The S's
+// top and bottom bars pass in front of the stem and its middle splits around it, so the letters
+// interlock. Each beat a bright pulse sweeps along the line, and the letters glow once as it passes
+// behind them (CSS in index.css: .fs-trace, .fs-glow); both stay still with reduced motion. Vector,
+// so it's crisp at any size. pulse={false} drops the line (public/favicon.svg is the mark without it).
 
-const BLUE = ["#d6e4ff", "#4d8dff", "#2a5bb8", "#1a3a7a"];   // light, base, shadow, edge
-const GOLD = ["#fff1a8", "#f7b733", "#c4831a", "#7a4a06"];
+const BLUE = { light: "#d6e4ff", base: "#4d8dff", shadow: "#2a5bb8", edge: "#13306b" };
+const GREEN = { light: "#c8f9dd", base: "#42e08b", shadow: "#1b7a3e", edge: "#0b4424" };
 
-// letter outlines on a 64 x 84 grid; the F's stem runs down in front of the S's top bar
-const F_PATH = "M19 2 H63 L59 14 H33 V21 H55 L51 31 H33 V54 H19 Z";
-const S_PATH = "M0 36 H57 L53 46 H14 V54 H57 V81 H-3 L1 71 H44 V63 H0 Z";
-// one line behind the letters, a beat on each side
-const PULSE = "-36,41 -25,41 -21,31 -17,52 -13,36 -10,41 67,41 72,41 76,29 80,53 84,36 87,41 97,41";
+// Outlines with 45-degree cut corners, in the reference image's pixel space.
+const F_PATH = "M348 15 H662 L680 33 V90 L662 108 H410 V150 H582 L600 168 V204 L582 222 H410 V548 H330 V33 Z";
+// the S's top bar, its left side, and the stub of its middle left of the stem
+const S_TOP = "M253 280 H574 L592 298 V332 L574 350 H305 V418 H318 V478 H253 L235 460 V298 Z";
+// the rest of its middle (right of the stem), its right side and its bottom bar
+const S_BOTTOM = "M422 412 H582 L600 430 V617 L582 635 H268 L250 617 V570 L268 552 H530 V478 H422 Z";
+// one line behind the letters: a small bump and a big beat on each side
+const PULSE = "40,390 62,390 76,342 92,398 112,398 156,228 186,486 206,390 600,390 668,390 684,365 700,395 716,395 742,226 774,500 796,392 800,390";
+const EXTRUDE = 7;   // the dark depth edge, down and to the right
+
+function Letter({ d, colors, fill }) {
+  return (
+    <>
+      <path d={d} fill={colors.edge} transform={`translate(${EXTRUDE} ${EXTRUDE})`} />
+      <path d={d} fill={fill} stroke={colors.edge} strokeWidth="5" strokeLinejoin="miter" />
+    </>
+  );
+}
 
 function BrandMark({ size = 32, pulse = true, animated = true, className = "", title = "FitSense" }) {
   const id = useId().replace(/:/g, "");
-  const view = pulse ? "-38 0 137 84" : "-8 0 75 84";
+  const view = pulse ? "30 0 780 650" : "215 0 480 650";
   const [, , vw, vh] = view.split(" ").map(Number);
   const label = title ? { role: "img", "aria-label": title } : { "aria-hidden": true };
   const svg = { viewBox: view, width: "100%", height: "100%", style: { position: "absolute", inset: 0, overflow: "visible" } };
+  const gradient = (name, c) => (
+    <linearGradient id={`${id}-${name}`} x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stopColor={c.light} />
+      <stop offset="0.35" stopColor={c.base} />
+      <stop offset="1" stopColor={c.shadow} />
+    </linearGradient>
+  );
   return (
     <span className={`relative inline-block shrink-0 ${className}`} style={{ width: (size * vw) / vh, height: size }} {...label}>
       {pulse && (
         <svg {...svg} aria-hidden="true">
           <defs>
-            <linearGradient id={`${id}-line`} gradientUnits="userSpaceOnUse" x1="-36" y1="0" x2="97" y2="0">
-              <stop offset="0" stopColor={BLUE[1]} />
-              <stop offset="0.45" stopColor={BLUE[1]} />
-              <stop offset="0.55" stopColor={GOLD[1]} />
-              <stop offset="1" stopColor={GOLD[1]} />
+            <linearGradient id={`${id}-line`} gradientUnits="userSpaceOnUse" x1="40" y1="0" x2="800" y2="0">
+              <stop offset="0" stopColor={BLUE.base} />
+              <stop offset="0.4" stopColor={BLUE.base} />
+              <stop offset="0.6" stopColor={GREEN.base} />
+              <stop offset="1" stopColor={GREEN.base} />
             </linearGradient>
           </defs>
           <g fill="none" stroke={`url(#${id}-line)`} strokeLinejoin="round" strokeLinecap="round">
-            <polyline points={PULSE} strokeWidth="2.5" opacity="0.45" />
-            {/* the bright pulse travelling along it */}
-            <polyline points={PULSE} strokeWidth="3.5" pathLength="100"
-                      className={animated ? "fs-trace" : undefined} strokeDasharray={animated ? "16 84" : undefined}
-                      opacity={animated ? 1 : 0} />
+            <polyline points={PULSE} strokeWidth="9" opacity="0.4" />
+            {/* the bright pulse travelling along it, once per beat */}
+            {animated && <polyline points={PULSE} strokeWidth="13" pathLength="100" strokeDasharray="14 186" className="fs-trace" />}
           </g>
         </svg>
       )}
       <svg {...svg} aria-hidden="true" className={animated ? "fs-glow" : undefined}>
         <defs>
-          {[["blue", BLUE], ["gold", GOLD]].map(([name, [light, base, shadow]]) => (
-            <linearGradient key={name} id={`${id}-${name}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor={light} />
-              <stop offset="0.4" stopColor={base} />
-              <stop offset="1" stopColor={shadow} />
-            </linearGradient>
-          ))}
+          {gradient("blue", BLUE)}
+          {gradient("green", GREEN)}
         </defs>
-        <path d={S_PATH} fill={`url(#${id}-gold)`} stroke={GOLD[3]} strokeWidth="2" strokeLinejoin="miter" />
-        <path d={F_PATH} fill={`url(#${id}-blue)`} stroke={BLUE[3]} strokeWidth="2" strokeLinejoin="miter" />
+        <Letter d={F_PATH} colors={BLUE} fill={`url(#${id}-blue)`} />
+        <Letter d={S_TOP} colors={GREEN} fill={`url(#${id}-green)`} />
+        <Letter d={S_BOTTOM} colors={GREEN} fill={`url(#${id}-green)`} />
       </svg>
     </span>
   );

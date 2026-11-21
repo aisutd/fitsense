@@ -263,23 +263,22 @@ input[type="number"] {
 }
 
 /* ---------- Logo heartbeat (BrandMark) ---------- */
-/* A bright pulse sweeps along the heartbeat line behind the letters (pathLength 100, dash 16)... */
+/* Each beat (1.8s) a bright pulse sweeps along the heartbeat line behind the letters (pathLength 100,
+   a 14-long dash), and the letters glow once, 5px to 10px around them, as it passes behind them
+   (the logo's centre is 52% along the line). */
 .fs-trace {
   animation: fs-trace 1.8s linear infinite;
 }
 @keyframes fs-trace {
-  from { stroke-dashoffset: 100; }
-  to { stroke-dashoffset: -16; }
+  from { stroke-dashoffset: 14; }
+  to { stroke-dashoffset: -100; }
 }
-/* ...while the letters glow with a double beat, 5px to 10px around them. */
 .fs-glow {
   animation: fs-glow 1.8s ease-in-out infinite;
 }
 @keyframes fs-glow {
-  0%, 60%, 100% { filter: drop-shadow(0 0 5px #4d8dff66) drop-shadow(0 0 5px #f7b73344); }
-  14% { filter: drop-shadow(0 0 10px #4d8dffcc) drop-shadow(0 0 10px #f7b73399); }
-  28% { filter: drop-shadow(0 0 6px #4d8dff77) drop-shadow(0 0 6px #f7b73355); }
-  40% { filter: drop-shadow(0 0 9px #4d8dffaa) drop-shadow(0 0 9px #f7b73388); }
+  0%, 38%, 72%, 100% { filter: drop-shadow(0 0 5px #4d8dff55) drop-shadow(0 0 5px #42e08b44); }
+  52% { filter: drop-shadow(0 0 10px #4d8dffcc) drop-shadow(0 0 10px #42e08baa); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -293,5 +292,5 @@ input[type="number"] {
     animation: none;
   }
   .fs-trace { opacity: 0; }
-  .fs-glow { filter: drop-shadow(0 0 5px #4d8dff66) drop-shadow(0 0 5px #f7b73344); }
+  .fs-glow { filter: drop-shadow(0 0 5px #4d8dff55) drop-shadow(0 0 5px #42e08b44); }
 }
