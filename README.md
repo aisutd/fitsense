@@ -252,6 +252,27 @@ until a model is saved, recommendations use the rule-based order.
 logs (`plan_id` + `day_number`): a full week progresses the dose, a missed one cuts days and
 volume, and exercises on skipped days are swapped. Run `backend/sql/002_weekly_plans.sql` first.
 
+**Adaptation model**: `adaptation_model.py` is an XGBoost model that decides each week's change.
+For every change the plan may make (step up, same dose, ease off, each with its number of days)
+it predicts how much of next week's plan the user will finish, from their last weeks' completion,
+skipped and partial days, and profile. The plan takes the most demanding change predicted to reach
+75% (`TARGET_COMPLETION`); a week below 60% can still never step up. Without a model file, the
+fixed thresholds above decide. The Plan tab shows the expected completion when the model decided.
+
+```bash
+python adaptation_model.py evaluate          # held-out error, and rules vs model on simulated users
+python adaptation_model.py train             # bootstrap from simulated users -> models/adaptation.json
+python adaptation_model.py train --supabase  # simulated users + real plans and logs, real weeks weighted 5x
+```
+
+The bootstrap model is trained on simulated users, so it encodes assumptions (overload lowers
+motivation, finished training builds fitness), not measured behavior. `--supabase` adds every
+finished Supabase week that has a saved plan before it (logs linked to their week's plan the way
+the app does), each counted 5 times (`REAL_WEIGHT`); there are too few real weeks to train on them
+alone yet, and cross-validation on real users found the blend predicts best. On the simulation it finishes about 67% of plans vs 61% for
+the thresholds, with similar dose progression. The backend Docker image trains the bootstrap
+model at build time.
+
 **Recovery days**: every week keeps at least one (at most 6 training days, even if onboarding says 7).
 Training days are spread over the week with a recovery day between them where possible
 (3 days → Mon/Wed/Fri, 6 days → Sunday off), and the rest of the week is re-planned as days get
