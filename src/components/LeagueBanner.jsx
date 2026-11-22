@@ -1,4 +1,5 @@
 import PixelAvatar from "./PixelAvatar";
+import ShinyText from "./reactbits/ShinyText";
 import { fitnessLevel, leagueStyle } from "../game/leagues";
 
 // The player's league banner: a face card of their avatar, league name and tier, season score,
@@ -108,7 +109,12 @@ function LeagueBanner({ league, player }) {
         </div>
         <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
           <span className="text-lg">{league?.position ? `#${league.position} of ${league.members}` : "Unranked"}</span>
-          <span className="px-2 text-base leading-[22px] text-night-950" style={{ background: move.color, boxShadow: `0 0 10px ${move.color}` }}>{move.label}</span>
+          <span className="px-2 text-base leading-[22px] text-night-950" style={{ background: move.color, boxShadow: `0 0 10px ${move.color}` }}>
+            {/* a glint runs across the label while you're on track to move up (React Bits ShinyText) */}
+            {league?.movement === "promotion zone"
+              ? <ShinyText text={move.label} color="#060a15" shineColor="#ffffff" speed={1.4} delay={2.5} />
+              : move.label}
+          </span>
         </div>
       </div>
     </section>

@@ -8,6 +8,7 @@ from supabase import Client
 from app import achievement_service
 from app import healthscore_repo as repo
 from app import plans
+from app.concurrency import parallel
 from app.database import get_supabase
 from app.gamification import PointAction
 from app.gamification_service import award_action, checkin, record_workout_streak
@@ -36,15 +37,18 @@ def get_day(user_id: UUID, log_date: date, supabase: Client = Depends(get_supaba
     uid, day = str(user_id), log_date.isoformat()
     night = (log_date - timedelta(days=1)).isoformat()
     try:
-        repo.get_profile(supabase, uid)
-        workouts = (supabase.table("workout_logs").select("workout_log_id, completion_status, duration_minutes")
-                    .eq("user_id", uid).eq("workout_date", day).execute().data)
-        sleep = (supabase.table("sleep_logs").select("sleep_date, hours_slept, sleep_quality")
-                 .eq("user_id", uid).eq("sleep_date", night).limit(1).execute().data)
-        activity = (supabase.table("activity_logs").select("steps, active_minutes, calories_burned")
-                    .eq("user_id", uid).eq("log_date", day).limit(1).execute().data)
-        meals = (supabase.table("meal_entries").select("meal_id, meal_type, display_name, calories, protein_g, carbs_g, fat_g, created_at")
-                 .eq("user_id", uid).eq("log_date", day).eq("status", "confirmed").order("created_at").execute().data)
+        # five independent reads, at the same time
+        _, workouts, sleep, activity, meals = parallel(
+            lambda: repo.get_profile(supabase, uid),
+            lambda: (supabase.table("workout_logs").select("workout_log_id, completion_status, duration_minutes")
+                     .eq("user_id", uid).eq("workout_date", day).execute().data),
+            lambda: (supabase.table("sleep_logs").select("sleep_date, hours_slept, sleep_quality")
+                     .eq("user_id", uid).eq("sleep_date", night).limit(1).execute().data),
+            lambda: (supabase.table("activity_logs").select("steps, active_minutes, calories_burned")
+                     .eq("user_id", uid).eq("log_date", day).limit(1).execute().data),
+            lambda: (supabase.table("meal_entries").select("meal_id, meal_type, display_name, calories, protein_g, carbs_g, fat_g, created_at")
+                     .eq("user_id", uid).eq("log_date", day).eq("status", "confirmed").order("created_at").execute().data),
+        )
     except APIError as e:
         raise HTTPException(status_code=502, detail=f"Failed to load the day: {e.message}")
     return {"date": day, "workouts": workouts, "sleep": sleep[0] if sleep else None,
@@ -54,7 +58,12 @@ def get_day(user_id: UUID, log_date: date, supabase: Client = Depends(get_supaba
 @router.post("/logs/{user_id}/workouts")
 def log_workout(user_id: UUID, body: WorkoutLogIn, supabase: Client = Depends(get_supabase)):
     """Record a workout (completed, partial or skipped)."""
-    row = {"user_id": str(user_id), **body.model_dump(mode="json")}
+    row = {"user_id": str(user_id), **body.model_dump(mode="json", exclude={"skip_reason", "swapped"})}
+    # Only sent when used, so plain logs keep working before backend/sql/009 has been run.
+    if body.skip_reason is not None:
+        row["skip_reason"] = body.skip_reason.value
+    if body.swapped:
+        row["swapped"] = True
     if body.plan_id is None:
         # count it toward that week's workout plan (its next open day), so the plan can adapt
         try:
@@ -125,8 +134,7 @@ def log_meal(user_id: UUID, body: MealLogIn, supabase: Client = Depends(get_supa
 def get_goals(user_id: UUID, supabase: Client = Depends(get_supabase)):
     """Current targets used by the HealthScore (defaults or estimates where none are set)."""
     try:
-        profile = repo.get_profile(supabase, str(user_id))
-        return repo.current_goals(supabase, str(user_id), profile)
+        return repo.current_goals(supabase, str(user_id))   # 404s itself when there's no profile
     except APIError as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch goals: {e.message}")
 

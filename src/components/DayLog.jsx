@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { motion } from "motion/react";
+import { usePopIn } from "../fx/popIn";
 import PixelIcon from "./PixelIcon";
 import { ICONS } from "../icons";
 import { getDayLog } from "../api";
@@ -9,20 +11,21 @@ import { dayLabel, shiftDay } from "./DateSwitcher";
 const num = (n, digits = 0) => Number(n ?? 0).toLocaleString("en-US", { maximumFractionDigits: digits });
 const STATUS_COLOR = { completed: "text-activity", partial: "text-gold", skipped: "text-nutrition" };
 
-function Row({ icon, color, title, children }) {
+function Row({ icon, color, title, pop, children }) {
   return (
-    <div className="flex gap-4 border-t-[3px] border-night-700 py-4 first:border-t-0">
+    <motion.div {...pop} className="flex gap-4 border-t-[3px] border-night-700 py-4 first:border-t-0">
       <PixelIcon icon={icon} size={30} />
       <div className="min-w-0 flex-1">
         <p className="text-sm uppercase tracking-wider" style={{ color }}>{title}</p>
         <div className="mt-1 text-lg">{children}</div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function DayLog({ userId, date, today, refreshKey }) {
   const [state, setState] = useState({ status: "loading", day: null });
+  const pop = usePopIn();   // the rows slide in one after another, like a React Bits AnimatedList
 
   useEffect(() => {
     let cancelled = false;
@@ -54,8 +57,8 @@ function DayLog({ userId, date, today, refreshKey }) {
 
       {status === "error" && <p className="mt-4 text-nutrition">Couldn't load this day.</p>}
       {status !== "error" && (
-        <div className={`mt-4 ${status === "loading" ? "opacity-50" : ""}`}>
-          <Row icon={ICONS.dumbbell} color="#4d8dff" title="Workouts">
+        <motion.div {...pop.list} className={`mt-4 ${status === "loading" ? "opacity-50" : ""}`}>
+          <Row pop={pop.item} icon={ICONS.dumbbell} color="#4d8dff" title="Workouts">
             {day?.workouts?.length
               ? day.workouts.map((w) => (
                   <p key={w.workout_log_id}>
@@ -65,12 +68,12 @@ function DayLog({ userId, date, today, refreshKey }) {
                 ))
               : empty}
           </Row>
-          <Row icon={ICONS.moon} color="#a66bff" title={`Sleep, night of ${dayLabel(shiftDay(date, -1), today)}`}>
+          <Row pop={pop.item} icon={ICONS.moon} color="#a66bff" title={`Sleep, night of ${dayLabel(shiftDay(date, -1), today)}`}>
             {day?.sleep
               ? `${num(day.sleep.hours_slept, 2)} hours${day.sleep.sleep_quality ? ` · quality ${day.sleep.sleep_quality}/5` : ""}`
               : empty}
           </Row>
-          <Row icon={ICONS.runner} color="#42e08b" title="Activity">
+          <Row pop={pop.item} icon={ICONS.runner} color="#42e08b" title="Activity">
             {day?.activity
               ? [
                   day.activity.steps != null && `${num(day.activity.steps)} steps`,
@@ -78,7 +81,7 @@ function DayLog({ userId, date, today, refreshKey }) {
                 ].filter(Boolean).join(" · ") || empty
               : empty}
           </Row>
-          <Row icon={ICONS.apple} color="#ff5d6c" title="Meals">
+          <Row pop={pop.item} icon={ICONS.apple} color="#ff5d6c" title="Meals">
             {meals.length ? (
               <>
                 <ul>
@@ -98,7 +101,7 @@ function DayLog({ userId, date, today, refreshKey }) {
               </>
             ) : empty}
           </Row>
-        </div>
+        </motion.div>
       )}
     </section>
   );

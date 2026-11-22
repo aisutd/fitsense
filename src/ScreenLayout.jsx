@@ -1,6 +1,5 @@
 import { motion } from "motion/react";
-import PixelIcon from "./components/PixelIcon";
-import { ICONS } from "./icons";
+import BrandMark from "./components/BrandMark";
 
 // Shared shell for the onboarding screens: logo, stage bar, title column and
 // a framed panel for the inputs. Children animate in one after another; wrap
@@ -29,7 +28,7 @@ const panel = {
 export function Logo() {
   return (
     <div className="flex items-center gap-3">
-      <PixelIcon icon={ICONS.trophy} size={26} />
+      <BrandMark size={40} title="" />
       <span className="font-title text-xl font-bold tracking-wider sm:text-2xl">FITSENSE</span>
     </div>
   );

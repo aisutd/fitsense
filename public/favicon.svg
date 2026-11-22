@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="125 -5 660 660">
+  <!-- The FitSense mark for the browser tab (src/components/BrandMark.jsx without the heartbeat line). -->
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d6e4ff"/><stop offset="0.35" stop-color="#4d8dff"/><stop offset="1" stop-color="#2a5bb8"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c8f9dd"/><stop offset="0.35" stop-color="#42e08b"/><stop offset="1" stop-color="#1b7a3e"/>
+    </linearGradient>
+  </defs>
+  <rect x="125" y="-5" width="660" height="660" rx="90" fill="#0b1224"/>
+  <g transform="translate(7 7)">
+    <path d="M348 15 H662 L680 33 V90 L662 108 H410 V150 H582 L600 168 V204 L582 222 H410 V548 H330 V33 Z" fill="#13306b"/>
+  </g>
+  <path d="M348 15 H662 L680 33 V90 L662 108 H410 V150 H582 L600 168 V204 L582 222 H410 V548 H330 V33 Z" fill="url(#blue)" stroke="#13306b" stroke-width="5"/>
+  <g transform="translate(7 7)" fill="#0b4424">
+    <path d="M253 280 H574 L592 298 V332 L574 350 H305 V418 H318 V478 H253 L235 460 V298 Z"/>
+    <path d="M422 412 H582 L600 430 V617 L582 635 H268 L250 617 V570 L268 552 H530 V478 H422 Z"/>
+  </g>
+  <g fill="url(#green)" stroke="#0b4424" stroke-width="5">
+    <path d="M253 280 H574 L592 298 V332 L574 350 H305 V418 H318 V478 H253 L235 460 V298 Z"/>
+    <path d="M422 412 H582 L600 430 V617 L582 635 H268 L250 617 V570 L268 552 H530 V478 H422 Z"/>
+  </g>
+</svg>

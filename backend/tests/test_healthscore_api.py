@@ -3,6 +3,8 @@ from uuid import uuid4
 
 import pytest
 
+from app import cache
+
 TODAY = date(2026, 10, 15)
 
 PROFILE = {
@@ -198,6 +200,7 @@ def test_weights_from_config(client, fake_db, complete_user):
     fake_db.table("health_score_config").insert(
         {"version": 2, "workout_weight": 1.0, "nutrition_weight": 0, "sleep_weight": 0, "activity_weight": 0}
     ).execute()
+    cache.clear(fake_db)   # the weights are cached briefly; this test changes them directly
     out = score(client, complete_user)
     assert out["weights"]["workouts"] == 1.0
     assert out["overall_score"] == out["workouts"] == 75

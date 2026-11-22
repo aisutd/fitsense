@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import DashboardHeader from "../components/DashboardHeader";
+import Counter from "../components/reactbits/Counter";
 import PixelCard from "../components/reactbits/PixelCard";
 import PixelIcon from "../components/PixelIcon";
 import ScoreRing from "../components/ScoreRing";
+import WorkoutWhatIf from "../components/WorkoutWhatIf";
 import { ICONS } from "../icons";
-import { getForecasts, getGoals } from "../api";
+import { queries } from "../queries";
+import { useCachedQuery } from "../queryCache";
 
 // The four forecasts, laid out like the HealthScore page: a card each around a ring. A card (or its
 // ring section) opens the full forecast, with its chart, below.
@@ -157,10 +160,11 @@ function SeriesCard({ series, view, horizon, side, delay, open, onToggle }) {
             <PixelIcon icon={series.icon} size={36} />
             <h3 className="text-2xl font-bold" style={{ color: series.color }}>{series.short}</h3>
           </div>
-          <motion.p key={horizon} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-3 text-4xl font-bold">
-            {number(view.value, series.digits)}
+          {/* digits roll to each horizon's value (React Bits Counter) */}
+          <p className="mt-3 text-4xl font-bold">
+            <Counter value={Number(view.value)} decimals={series.digits} fontSize="inherit" motionBlur={false} fade={0.15} />
             <span className="ml-2 text-xl text-muted">{series.unit}</span>
-          </motion.p>
+          </p>
           <p className="mt-2 text-muted">
             in {HORIZONS[horizon]}
             {view.change != null && ` · ${changeLabel(view.change, series.digits)}`}
@@ -241,31 +245,16 @@ function HorizonPicker({ value, onChange }) {
   );
 }
 
+// The forecast; shown straight away when it's been loaded before (or prefetched), then refreshed.
 function useForecasts(userId) {
-  const [attempt, setAttempt] = useState(0);
-  const [state, setState] = useState({ status: "loading", data: null, error: null });
-
-  useEffect(() => {
-    let cancelled = false;
-    setState({ status: "loading", data: null, error: null });
-    getForecasts(userId)
-      .then((data) => !cancelled && setState({ status: "ready", data, error: null }))
-      .catch((error) => !cancelled && setState({ status: "error", data: null, error }));
-    return () => { cancelled = true; };
-  }, [userId, attempt]);
-
-  return { ...state, retry: () => setAttempt((value) => value + 1) };
+  const { status, data, error, reload } = useCachedQuery(queries.forecast(userId));
+  return { status, data, error, retry: reload };
 }
 
 // The steps goal the HealthScore uses (the ring shows the forecast against it).
 function useStepsTarget(userId) {
-  const [target, setTarget] = useState(DEFAULT_STEPS);
-  useEffect(() => {
-    let cancelled = false;
-    getGoals(userId).then((goals) => !cancelled && goals?.daily_steps && setTarget(goals.daily_steps)).catch(() => {});
-    return () => { cancelled = true; };
-  }, [userId]);
-  return target;
+  const { data } = useCachedQuery(queries.goals(userId));
+  return data?.daily_steps || DEFAULT_STEPS;
 }
 
 function Forecast({ userId, profile, onNavigate, onEditProfile, onLogout }) {
@@ -398,6 +387,7 @@ function Forecast({ userId, profile, onNavigate, onEditProfile, onLogout }) {
                     note={opened.key === "weight_kg" && data.notes?.weight_from_profile_only
                       ? `From your profile weight and goal, assuming you keep doing ${Math.round((data.notes.weight_adherence ?? 1) * 100)}% of your planned workouts. Log weigh-ins to make it yours.`
                       : null}>
+                    {opened.key === "workouts_per_week" && data.workout_scenarios && <WorkoutWhatIf scenarios={data.workout_scenarios} />}
                     {opened.key === "health_score" && healthRows.length > 0 && (
                       <div className="mt-6 border-t border-night-700 pt-5">
                         <div className="flex flex-wrap items-end justify-between gap-3">

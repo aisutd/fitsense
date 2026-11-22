@@ -234,9 +234,13 @@ def main():
     model = exercise_ranker.load_model()
     exercises = load_exercises()
     client = supabase_client()
-    print(weekly_plan.format_plan(profile, weekly_plan.current_plan(client, profile, exercises, model=model), exercises))
+    adapter = weekly_plan.adaptation_model.load_model()
+    plan = weekly_plan.current_plan(client, profile, exercises, model=model, adapter=adapter)
+    print(weekly_plan.format_plan(profile, plan, exercises))
     print("\nOrdered by the XGBoost ranker." if model else
           "\nNo trained ranker yet (python exercise_ranker.py train); using the rule-based order.")
+    print("Week-to-week changes picked by the XGBoost adaptation model." if adapter else
+          "No adaptation model yet (python adaptation_model.py train); using the completion thresholds.")
     print(progress_forecast.format_forecast(progress_forecast.forecast_from_supabase(client, user_id)))
 
 

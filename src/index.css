@@ -172,6 +172,57 @@ input[type="number"] {
   display: none;
 }
 
+/* React Bits AnimatedList re-skinned as the pixel leaderboard: square rows with no tiles of their own
+   (each row draws its own stripes and zone colour), and a hard-edged highlight in the league's colour */
+.animated-list.px-list {
+  width: 100%;
+  border-radius: 0;
+  color: inherit;
+}
+
+.px-list .animated-list__viewport {
+  padding: 0 4px 0 0;
+  border-radius: 0;
+  scrollbar-color: var(--color-night-500) transparent;
+}
+
+.px-list .animated-list__viewport::-webkit-scrollbar-thumb {
+  border-radius: 0;
+  background: var(--color-night-500);
+}
+
+.px-list .animated-list__item {
+  display: block;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  cursor: default;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.px-list .animated-list__item:hover,
+.px-list .animated-list__item[data-selected]:not(:active),
+.px-list .animated-list__item:active {
+  filter: none;
+}
+
+.px-list .animated-list__rim {
+  display: none;
+}
+
+.px-list .animated-list__ring {
+  border-radius: 0;
+  box-shadow: inset 0 0 0 2px var(--al-ring);
+}
+
+.animated-list.px-list:has(> .animated-list__viewport:focus-visible) {
+  outline: 3px dashed var(--color-cyan);
+  outline-offset: 4px;
+}
+
 /* ---------- Background animation ---------- */
 @keyframes twinkle {
   0%, 100% { opacity: 0.25; }
@@ -262,12 +313,90 @@ input[type="number"] {
   animation: blink 1s steps(1) infinite;
 }
 
+/* ---------- Logo heartbeat (BrandMark) ---------- */
+/* A beat every 5s (BEAT_MS in BrandMark.jsx). Each beat takes the first 2s: a pulse sweeps along
+   the heartbeat line behind the letters (pathLength 100, a 14-long dash; 0-36%), the letters glow
+   once, 5px to 10px around them, as it passes behind them (peak at 18.7%: the logo's centre is 52%
+   along the line), and a ring ripples out from the logo over about 1.07s (HeartbeatBackdrop),
+   lighting up cracks as it goes; then it rests. */
+.fs-trace {
+  opacity: 0.7;
+  animation: fs-trace 5s linear infinite;
+}
+@keyframes fs-trace {
+  0% { stroke-dashoffset: 14; }
+  36%, 100% { stroke-dashoffset: -100; }
+}
+.fs-glow {
+  animation: fs-glow 5s ease-in-out infinite;
+}
+@keyframes fs-glow {
+  0%, 12%, 27%, 100% { filter: drop-shadow(0 0 5px #4d8dff33) drop-shadow(0 0 5px #42e08b26); }
+  18.7% { filter: drop-shadow(0 0 10px #4d8dff80) drop-shadow(0 0 10px #42e08b60); }
+}
+
+/* The ring: a faint wash inside and a soft blue-to-green band at its edge, quick at first, then
+   slowing and fading as it spreads. HeartbeatBackdrop keeps it to the top of the page. */
+.fs-ripple {
+  position: absolute;
+  width: 170vmax;
+  height: 170vmax;
+  margin: -85vmax 0 0 -85vmax;
+  border-radius: 50%;
+  background: radial-gradient(circle, #42e08b06 0%, #4d8dff10 50%, #4d8dff22 61%, #42e08b2e 67%, #42e08b00 72%);
+  opacity: 0;
+  transform: scale(0.02);
+  will-change: transform, opacity;
+  animation: fs-ripple 5s linear infinite;
+}
+@keyframes fs-ripple {
+  0%, 18% { transform: scale(0.02); opacity: 0; }
+  18.7% { transform: scale(0.04); opacity: 1; }
+  23.1% { transform: scale(0.36); opacity: 0.9; }
+  29.3% { transform: scale(0.68); opacity: 0.55; }
+  40%, 100% { transform: scale(1); opacity: 0; }
+}
+
+/* The cracks: a mesh over the ripple (src/fx/crackMesh.js), masked to a band just inside the ring's
+   edge, so the cracks light up as the edge passes over them. --fs-r follows the band's radius (about
+   54vmax at full size: 85vmax x 0.64); without @property support it steps instead of gliding. */
+@property --fs-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.fs-cracks {
+  position: absolute;
+  inset: 0;
+  --fs-r: 0px;
+  --fs-band: radial-gradient(circle at var(--fs-x) var(--fs-y), transparent calc(var(--fs-r) - 48px),
+    #000 calc(var(--fs-r) - 18px), #000 calc(var(--fs-r) - 4px), transparent calc(var(--fs-r) + 10px));
+  -webkit-mask-image: var(--fs-band);
+  mask-image: var(--fs-band);
+  filter: drop-shadow(0 0 3px #42e08b99);
+  opacity: 0;
+  animation: fs-cracks 5s linear infinite;
+}
+@keyframes fs-cracks {
+  0%, 18% { --fs-r: 0px; opacity: 0; }
+  18.7% { --fs-r: 2.2vmax; opacity: 0.85; }
+  23.1% { --fs-r: 19.6vmax; opacity: 0.75; }
+  29.3% { --fs-r: 37vmax; opacity: 0.45; }
+  40%, 100% { --fs-r: 54vmax; opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .fs-ripple,
+  .fs-cracks { display: none; }
   .star-twinkle,
   .cloud-drift,
   .blink,
   .ring-cell,
-  .ring-marker[data-lit] {
+  .ring-marker[data-lit],
+  .fs-trace,
+  .fs-glow {
     animation: none;
   }
+  .fs-trace { opacity: 0; }
+  .fs-glow { filter: drop-shadow(0 0 5px #4d8dff33) drop-shadow(0 0 5px #42e08b26); }
 }

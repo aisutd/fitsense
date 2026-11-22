@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 
+from app.concurrency import parallel
 from app.gamification import BADGE_REWARDS, FITCOINS, LEVEL_THRESHOLDS, POINTS, PointAction
 
 
@@ -66,23 +67,34 @@ CHECKIN_DATES = (("workout_logs", "workout_date", 0), ("activity_logs", "log_dat
 CHECKIN_LOOKBACK = 120
 
 
-def checkin_streak(db, user_id: str, day: date) -> int:
-    """Consecutive days, ending on day, with anything logged: a workout, steps, sleep or a confirmed meal.
-
-    Unlike the workout streak this one survives recovery days, so it drives the reward effects."""
+def checkin_days(db, user_id: str, day: date) -> set[date]:
+    """Days in the CHECKIN_LOOKBACK days up to `day` with anything logged (the four tables are read
+    at the same time)."""
     start = day - timedelta(days=CHECKIN_LOOKBACK)
-    days = set()
-    for table, column, shift in CHECKIN_DATES:
+
+    def read(table, column, shift):
         query = (db.table(table).select(column).eq("user_id", user_id)
                  .gte(column, (start - timedelta(days=shift)).isoformat())
                  .lte(column, (day - timedelta(days=shift)).isoformat()))
         if table == "meal_entries":
             query = query.eq("status", "confirmed")
-        days |= {date.fromisoformat(str(row[column])[:10]) + timedelta(days=shift) for row in query.execute().data}
+        return {date.fromisoformat(str(row[column])[:10]) + timedelta(days=shift) for row in query.execute().data}
+
+    return set().union(*parallel(*[lambda spec=spec: read(*spec) for spec in CHECKIN_DATES]))
+
+
+def streak_ending(days: set[date], day: date) -> int:
     streak = 0
     while day - timedelta(days=streak) in days:
         streak += 1
     return streak
+
+
+def checkin_streak(db, user_id: str, day: date) -> int:
+    """Consecutive days, ending on day, with anything logged: a workout, steps, sleep or a confirmed meal.
+
+    Unlike the workout streak this one survives recovery days, so it drives the reward effects."""
+    return streak_ending(checkin_days(db, user_id, day), day)
 
 
 def merge_rewards(reward: dict | None, extra: dict | None) -> dict | None:

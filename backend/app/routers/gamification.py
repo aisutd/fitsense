@@ -10,9 +10,11 @@ from supabase import Client
 
 from app import achievement_service
 from app.achievements import BY_CODE
+from app.cache import per_client
+from app.concurrency import parallel
 from app.database import get_supabase
 from app.gamification import AVATARS, LEAGUES, LEVEL_THRESHOLDS, POINTS, PointAction, level_progress
-from app.gamification_service import award_action, checkin_streak
+from app.gamification_service import award_action, checkin_days, streak_ending
 from app import healthscore_repo as health_repo
 from app.schemas import (
     AwardPointsIn,
@@ -58,6 +60,8 @@ UPSERT_CHUNK = 500
 LOOKUP_CHUNK = 100   # user ids per in_() lookup
 PROMOTION_SHARE = 0.2   # top and bottom fifth of a league move up / down when the season closes
 MIN_MOVING_LEAGUE = 5   # smaller leagues hold their tiers
+CATALOG_TTL = 300   # seconds the badge list is reused for
+SEASON_SETUP_TTL = 600   # seconds: how often the season bookkeeping is re-run (it's idempotent)
 
 
 def _active_days(logs: dict) -> int:
@@ -74,13 +78,10 @@ def _private_score(health_score: float, active_days: int, elapsed_days: int) -> 
     return 0.75 * float(health_score) + 25.0 * min(1.0, active_days / max(1, elapsed_days))
 
 
-def _standings_age(supabase: Client, season_start: date) -> timedelta | None:
-    """How old the season's standings are, or None if there aren't any yet."""
-    last = (supabase.table("league_season_scores").select("updated_at").eq("season_start", season_start.isoformat())
-            .order("updated_at", desc=True).limit(1).execute().data)
-    if not last:
-        return None
-    return datetime.now(timezone.utc) - datetime.fromisoformat(str(last[0]["updated_at"]).replace("Z", "+00:00"))
+def _age(rows: list[dict]) -> timedelta:
+    """How old a season's standings are, from their rows' updated_at."""
+    newest = max(str(row["updated_at"]) for row in rows)
+    return datetime.now(timezone.utc) - datetime.fromisoformat(newest.replace("Z", "+00:00"))
 
 
 def _refresh_standings(supabase: Client, season_start: date, season_end: date, today: date) -> None:
@@ -120,13 +121,16 @@ def _display_name(profile: dict | None, account: dict | None, user_id: str) -> s
 
 def _names_and_avatars(supabase: Client, ids: list[str]) -> dict[str, tuple[str, str, str | None, str]]:
     """{user_id: (display name, equipped avatar, fitness level, avatar body)}, looked up in batches."""
-    profiles, accounts, games = {}, {}, {}
-    for i in range(0, len(ids), LOOKUP_CHUNK):
-        batch = ids[i:i + LOOKUP_CHUNK]
-        profiles |= {r["user_id"]: r for r in supabase.table("profiles").select("user_id, name, fitness_level").in_("user_id", batch).execute().data}
-        accounts |= {r["user_id"]: r for r in supabase.table("accounts").select("user_id, username").in_("user_id", batch).execute().data}
-        games |= {r["user_id"]: r for r in supabase.table("user_gamification").select("user_id, equipped_avatar, avatar_body")
-                  .in_("user_id", batch).execute().data}
+    tables = [("profiles", "user_id, name, fitness_level"), ("accounts", "user_id, username"),
+              ("user_gamification", "user_id, equipped_avatar, avatar_body")]
+    batches = [ids[i:i + LOOKUP_CHUNK] for i in range(0, len(ids), LOOKUP_CHUNK)]
+    # every batch of every table at once
+    reads = parallel(*[lambda t=table, c=columns, b=batch: supabase.table(t).select(c).in_("user_id", b).execute().data
+                       for table, columns in tables for batch in batches])
+    found = [dict() for _ in tables]
+    for n, rows in enumerate(reads):
+        found[n // max(1, len(batches))] |= {r["user_id"]: r for r in rows}
+    profiles, accounts, games = found
     return {u: (_display_name(profiles.get(u), accounts.get(u), u), (games.get(u) or {}).get("equipped_avatar") or "starter",
                 (profiles.get(u) or {}).get("fitness_level"), (games.get(u) or {}).get("avatar_body") or "male")
             for u in ids}
@@ -174,23 +178,36 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
     season_end = season_start + timedelta(days=SEASON_DAYS - 1)
     previous_start = season_start - timedelta(days=SEASON_DAYS)
     try:
-        supabase.rpc("finalize_league_season", {"p_season_start": previous_start.isoformat()}).execute()
-        supabase.table("league_seasons").upsert(
-            {"season_start": season_start.isoformat(), "season_end": season_end.isoformat()},
-            on_conflict="season_start",
-        ).execute()
-        game = _ensure_game_row(supabase, uid)
-        age = _standings_age(supabase, season_start)
-        if age is None:
+        # closing last season and recording this one only needs doing once a season, not on every view
+        def open_season():
+            supabase.rpc("finalize_league_season", {"p_season_start": previous_start.isoformat()}).execute()
+            supabase.table("league_seasons").upsert(
+                {"season_start": season_start.isoformat(), "season_end": season_end.isoformat()},
+                on_conflict="season_start",
+            ).execute()
+            return True
+        per_client(supabase, f"league-season:{season_start}", SEASON_SETUP_TTL, open_season)
+        # the whole season's standings (every league; a few hundred rows) in one read, with your game row
+        # and last season's tier, all at once
+        def season_rows():
+            return health_repo.all_rows(lambda: supabase.table("league_season_scores")
+                                        .select("user_id, tier, hidden_score, health_score, updated_at")
+                                        .eq("season_start", season_start.isoformat()).order("hidden_score", desc=True))
+        game, everyone, before = parallel(
+            lambda: _ensure_game_row(supabase, uid),
+            season_rows,
+            lambda: (supabase.table("league_season_scores").select("tier").eq("season_start", previous_start.isoformat())
+                     .eq("user_id", uid).limit(1).execute().data),
+        )
+        if not everyone:
             _refresh_standings(supabase, season_start, season_end, today)        # first view of the season
-        elif age > STANDINGS_TTL:
+            everyone = season_rows()
+        elif _age(everyone) > STANDINGS_TTL:
             # answer from the current standings; recompute after the response is sent
             background.add_task(_refresh_standings, supabase, season_start, season_end, today)
 
         tier = int(game.get("league_tier") or 0)
-        rows = health_repo.all_rows(lambda: supabase.table("league_season_scores").select("user_id, hidden_score, health_score")
-                                    .eq("season_start", season_start.isoformat()).eq("tier", tier)
-                                    .order("hidden_score", desc=True))
+        rows = [row for row in everyone if int(row.get("tier") or 0) == tier]   # already best first
         members = len(rows)
         position = next((i + 1 for i, row in enumerate(rows) if row["user_id"] == uid), None)
         mine = rows[position - 1] if position else None
@@ -210,16 +227,16 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
 
         # The whole league, by place: names, avatars and fitness levels only; the ranking score stays server-side.
         ids = [row["user_id"] for row in rows]
-        names = _names_and_avatars(supabase, list(dict.fromkeys([*ids, uid])))   # plus you, for the banner
+        names, unlocked = parallel(
+            lambda: _names_and_avatars(supabase, list(dict.fromkeys([*ids, uid]))),   # plus you, for the banner
+            lambda: achievement_service.evaluate(supabase, uid, "league", today, {
+                "tier": tier, "league": LEAGUES[tier], "position": position, "members": members,
+                "previous_tier": int(before[0]["tier"]) if before else None,
+            }),
+        )
         standings = [{"place": i + 1, "name": names[u][0], "avatar_id": names[u][1], "fitness_level": names[u][2],
                       "avatar_body": names[u][3], "is_current_user": u == uid, "zone": zone(i + 1)} for i, u in enumerate(ids)]
         podium = [{**row, "user_id": ids[row["place"] - 1]} for row in standings[:5]]
-        before = (supabase.table("league_season_scores").select("tier").eq("season_start", previous_start.isoformat())
-                  .eq("user_id", uid).limit(1).execute().data)
-        unlocked = achievement_service.evaluate(supabase, uid, "league", today, {
-            "tier": tier, "league": LEAGUES[tier], "position": position, "members": members,
-            "previous_tier": int(before[0]["tier"]) if before else None,
-        })
         return {
             "season": {
                 "start": season_start.isoformat(), "end": season_end.isoformat(),
@@ -254,31 +271,32 @@ def get_league(user_id: UUID, background: BackgroundTasks, supabase: Client = De
 def get_avatars(user_id: UUID, supabase: Client = Depends(get_supabase)):
     uid = str(user_id)
     try:
-        game = _ensure_game_row(supabase, uid)
-        supabase.table("user_avatars").upsert(
-            {"user_id": uid, "avatar_id": "starter"}, on_conflict="user_id,avatar_id"
-        ).execute()
-        owned = {row["avatar_id"] for row in supabase.table("user_avatars").select("avatar_id").eq(
-            "user_id", uid
-        ).execute().data}
-        earned = supabase.table("user_badges").select("badge_id, earned_at").eq("user_id", uid).execute().data
-        badge_catalog = {row["badge_id"]: row for row in supabase.table("badges").select(
-            "badge_id, name, description"
-        ).execute().data}
+        today = datetime.now(timezone.utc).date()
+        # independent reads, all at once (the badge list hardly changes, so it's cached briefly)
+        game, owned_rows, earned, badge_catalog, streaks, checkins = parallel(
+            lambda: _ensure_game_row(supabase, uid),
+            lambda: supabase.table("user_avatars").select("avatar_id").eq("user_id", uid).execute().data,
+            lambda: supabase.table("user_badges").select("badge_id, earned_at").eq("user_id", uid).execute().data,
+            lambda: per_client(supabase, "badges", CATALOG_TTL, lambda: {
+                row["badge_id"]: row for row in supabase.table("badges").select("badge_id, name, description").execute().data}),
+            lambda: supabase.table("user_streaks").select("streak_type, current_streak, longest_streak, last_completed_date")
+                    .eq("user_id", uid).execute().data,
+            lambda: checkin_days(supabase, uid, today),
+        )
+        owned = {row["avatar_id"] for row in owned_rows}
+        if "starter" not in owned:   # the free starter avatar, given once
+            supabase.table("user_avatars").upsert({"user_id": uid, "avatar_id": "starter"}, on_conflict="user_id,avatar_id").execute()
+            owned.add("starter")
         badges = [
             {**badge_catalog[row["badge_id"]], "earned_at": row["earned_at"]}
             for row in earned if row["badge_id"] in badge_catalog
         ]
-        streaks = supabase.table("user_streaks").select(
-            "streak_type, current_streak, longest_streak, last_completed_date"
-        ).eq("user_id", uid).execute().data
-        today = datetime.now(timezone.utc).date()
         for streak in streaks:
             last_day = streak.get("last_completed_date")
             if streak["streak_type"] == "workout" and last_day and date.fromisoformat(str(last_day)[:10]) < today - timedelta(days=1):
                 streak["current_streak"] = 0
         # the daily check-in streak (any log) is still alive until a whole day passes with nothing
-        days = checkin_streak(supabase, uid, today) or checkin_streak(supabase, uid, today - timedelta(days=1))
+        days = streak_ending(checkins, today) or streak_ending(checkins, today - timedelta(days=1))
         streaks = [{"streak_type": "checkin", "current_streak": days}, *streaks]
         return {
             "fitcoins": game.get("fitcoins") or 0,
@@ -371,10 +389,12 @@ def set_avatar_body(user_id: UUID, payload: AvatarBodyIn, supabase: Client = Dep
 def get_achievements(user_id: UUID, supabase: Client = Depends(get_supabase)):
     """Every achievement: earned ones with the System's commentary, the rest as goals or "???" with a hint.
     (The list is under "items", so the frontend doesn't announce them again.)"""
-    if not _profile_exists(supabase, user_id):
-        raise HTTPException(status_code=404, detail="Profile not found")
     try:
-        return achievement_service.catalog(supabase, str(user_id))
+        exists, catalog = parallel(lambda: _profile_exists(supabase, user_id),
+                                   lambda: achievement_service.catalog(supabase, str(user_id)))
+        if not exists:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        return catalog
     except APIError as e:
         raise HTTPException(status_code=502, detail=f"Failed to load achievements (has backend/sql/011_achievements.sql been run?): {e.message}")
 

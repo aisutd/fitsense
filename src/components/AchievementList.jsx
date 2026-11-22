@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
-import { getAchievements } from "../api";
+import { queries } from "../queries";
+import { peekQuery, refetch } from "../queryCache";
 import { announcerMode, RARITY, rewardLine, setAnnouncerMode } from "../achievements";
+import { tints } from "../fx/tints";
+import CountUp from "./reactbits/CountUp";
+import DecryptedText from "./reactbits/DecryptedText";
+import PixelCard from "./reactbits/PixelCard";
+import ShinyText from "./reactbits/ShinyText";
 
 // The System's achievements on the League tab, one category at a time. Earned ones show their title and
 // dry one-liner; hovering (or focusing / tapping) one brings up the System's commentary. Visible goals are
@@ -16,6 +22,8 @@ const CATEGORIES = [
   { key: "consistency", label: "Streaks & scores", match: ["consistency"] },
   { key: "league", label: "League & shop", match: ["league", "shop"] },
 ];
+// what a secret's "???" scrambles through
+const GLITCH = "#%&@$!?/\\<>[]{}=+*0123456789";
 
 function earnedOn(value) {
   if (!value) return "";
@@ -31,7 +39,13 @@ function Card({ item, mode }) {
           <span style={{ color: `${rarity.color}aa` }}>{rarity.label}</span>
           <span className="text-muted" aria-hidden="true">{item.hidden ? "🔒" : "○"}</span>
         </div>
-        <h3 className="mt-2 text-xl text-muted" style={TITLE}>{item.name}</h3>
+        <h3 className="mt-2 text-xl text-muted" style={TITLE}>
+          {/* secrets glitch when you hover them: the System isn't telling (React Bits DecryptedText) */}
+          {item.hidden
+            ? <DecryptedText text={item.name} animateOn="hover" characters={GLITCH} speed={45} maxIterations={14}
+                style={{ display: "block", whiteSpace: "pre-wrap" }} />
+            : item.name}
+        </h3>
         <p className="mt-1 text-sm italic text-muted">{item.hidden ? item.hint : item.plain}</p>
       </li>
     );
@@ -41,16 +55,26 @@ function Card({ item, mode }) {
     <li
       tabIndex={snarky ? 0 : undefined}
       aria-describedby={snarky ? `quip-${item.code}` : undefined}
-      className="group relative px-frame bg-night-900/70 p-4 outline-none focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-cyan"
-      style={{ "--frame": rarity.color }}
+      className="group relative outline-none focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-cyan"
     >
-      <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-widest">
-        <span style={{ color: rarity.color }}>{rarity.label}</span>
-        <span className="text-muted">{earnedOn(item.earned_at)}</span>
-      </div>
-      <h3 className="mt-2 text-xl" style={{ ...TITLE, color: rarity.color }}>{item.name}</h3>
-      <p className={`mt-1 text-sm ${snarky ? "italic text-muted" : ""}`}>{snarky ? item.description : item.plain}</p>
-      {snarky ? (
+      {/* sparkles in its rarity's colour when the category opens and on hover (React Bits PixelCard) */}
+      <PixelCard className="hs-card px-frame p-4" colors={tints(rarity.color)} glowColor={rarity.color} gap={6} speed={30}
+        radius={0} tabIndex={-1}
+        style={{ "--frame": rarity.color, height: "100%", background: "color-mix(in srgb, var(--color-night-900) 70%, transparent)" }}>
+        <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-widest">
+          <span style={{ color: rarity.color }}>{rarity.label}</span>
+          <span className="text-muted">{earnedOn(item.earned_at)}</span>
+        </div>
+        <h3 className="mt-2 text-xl" style={{ ...TITLE, color: rarity.color }}>
+          {/* Legendary titles catch the light (React Bits ShinyText) */}
+          {item.rarity === "legendary"
+            ? <ShinyText text={item.name} color={rarity.color} shineColor="#fff8dc" speed={1.8} delay={3} />
+            : item.name}
+        </h3>
+        <p className={`mt-1 text-sm ${snarky ? "italic text-muted" : ""}`}>{snarky ? item.description : item.plain}</p>
+        {!snarky && <p className="mt-2 text-xs text-gold">{rewardLine(item)}</p>}
+      </PixelCard>
+      {snarky && (
         // the System's quip, shown over the card on hover / focus
         <div
           id={`quip-${item.code}`}
@@ -62,25 +86,24 @@ function Card({ item, mode }) {
           <p className="mt-2 text-sm leading-snug">{item.commentary}</p>
           <p className="mt-2 text-xs text-gold">{rewardLine(item)}</p>
         </div>
-      ) : (
-        <p className="mt-2 text-xs text-gold">{rewardLine(item)}</p>
       )}
     </li>
   );
 }
 
 function AchievementList({ userId }) {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(() => peekQuery(queries.achievements(userId)) ?? null);
   const [error, setError] = useState(null);
   const [category, setCategory] = useState(CATEGORIES[0].key);
   const [mode, setMode] = useState(announcerMode);
 
   useEffect(() => {
     let cancelled = false;
-    const load = () => getAchievements(userId)
+    // first load can share a prefetch; after an announcement, ask again
+    const load = (share) => refetch(queries.achievements(userId), { shareInFlight: share === true })
       .then((result) => { if (!cancelled) { setData(result); setError(null); } })
       .catch((e) => { if (!cancelled) setError(e.message); });
-    load();
+    load(true);
     window.addEventListener("fitsense:achievements", load);
     return () => { cancelled = true; window.removeEventListener("fitsense:achievements", load); };
   }, [userId]);
@@ -103,7 +126,7 @@ function AchievementList({ userId }) {
             Out-of-the-ordinary things you do. Most stay secret until you do them.{mode !== "plain" && " Hover one to hear from the System."}
           </p>
         </div>
-        {data && <p className="text-4xl">{data.earned}<span className="text-lg text-muted">/{data.total} earned</span></p>}
+        {data && <p className="text-4xl"><CountUp to={data.earned} duration={1} /><span className="text-lg text-muted">/{data.total} earned</span></p>}
       </div>
 
       {data && (
