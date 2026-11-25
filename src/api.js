@@ -1,5 +1,10 @@
 // FitSense backend (FastAPI) client. Set VITE_API_URL in .env to point elsewhere.
 import { announce } from "./achievements";
+import { beat } from "./fx/beat";
+
+// Logging something: a workout, sleep, steps, a quick meal, or confirming a reviewed meal. Each one
+// makes the page's heartbeat beat once.
+const LOGS = /^\/(logs\/[^/]+\/(workouts|sleep|activity|meals)|meals\/[^/]+\/confirm)/;
 
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
@@ -27,6 +32,7 @@ async function request(method, path, body, signal) {
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data?.detail);
   if (Array.isArray(data?.achievements)) announce(data.achievements);   // the System has something to say
+  if (method !== "GET" && method !== "DELETE" && LOGS.test(path)) beat();
   return data;
 }
 

@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { motion } from "motion/react";
+import { beat } from "./fx/beat";
 import BrandMark from "./components/BrandMark";
 
 // Shared shell for the onboarding screens: logo, stage bar, title column and
@@ -26,6 +28,11 @@ const panel = {
 };
 
 export function Logo() {
+  // every screen has the logo, so a new screen (a tab switch, the next onboarding step) beats once as
+  // its logo appears, which is also after a tab's code has finished loading
+  useEffect(() => {
+    beat();
+  }, []);
   return (
     <div className="flex items-center gap-3">
       <BrandMark size={40} title="" />

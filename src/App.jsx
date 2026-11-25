@@ -1,7 +1,6 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useLenis } from "lenis/react";
 import PixelBackground from "./components/PixelBackground";
-import PixelTransition from "./components/PixelTransition";
 import RewardLayer from "./components/RewardLayer";
 import HeartbeatBackdrop from "./components/HeartbeatBackdrop";
 import Announcer from "./components/Announcer";
@@ -60,13 +59,9 @@ function rememberUser(id) {
   }
 }
 
-const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 function App() {
   const [userId, setUserId] = useState(savedUserId);
   const [screen, setScreen] = useState(userId ? LOADING : AUTH);
-  const [phase, setPhase] = useState("idle"); // idle | covering | revealing
-  const [pendingScreen, setPendingScreen] = useState(null);
   const lenis = useLenis();
 
   const [name, setName] = useState("");
@@ -158,28 +153,11 @@ function App() {
     goTo(AUTH);
   }
 
-  // Move to another screen behind the pixel dissolve.
+  // Switch screens straight away, back at the top.
   function goTo(next) {
-    if (phase !== "idle") return;
-    if (prefersReducedMotion()) {
-      setScreen(next);
-      lenis?.scrollTo(0, { immediate: true });
-      return;
-    }
-    setPendingScreen(next);
-    setPhase("covering");
-  }
-
-  const handleCovered = useCallback(() => {
-    setScreen(pendingScreen);
+    setScreen(next);
     lenis?.scrollTo(0, { immediate: true });
-    setPhase("revealing");
-  }, [pendingScreen, lenis]);
-
-  const handleRevealed = useCallback(() => {
-    setPendingScreen(null);
-    setPhase("idle");
-  }, []);
+  }
 
   async function handleWorkoutLocationContinue() {
     setSaving(true);
@@ -210,11 +188,7 @@ function App() {
   if (screen === AUTH) {
     content = <Auth onAuthenticated={handleAuthenticated} />;
   } else if (screen === LOADING) {
-    content = (
-      <p role="status" className="relative z-10 flex min-h-screen items-center justify-center text-2xl text-muted">
-        Loading player...
-      </p>
-    );
+    content = null;   // only while the profile loads; the dashboard follows straight away
   } else if (screen === 1) {
     content = <NameGreeting name={name} setName={setName} onContinue={() => goTo(2)} />;
   } else if (screen === 2) {
@@ -290,9 +264,8 @@ function App() {
       <HeartbeatBackdrop />
       {/* key remounts the screen so its entrance animation replays */}
       <div key={screen}>
-        <Suspense fallback={<p role="status" className="relative z-10 p-10 text-lg text-muted">Loading…</p>}>{content}</Suspense>
+        <Suspense fallback={null}>{content}</Suspense>
       </div>
-      <PixelTransition phase={phase} onCovered={handleCovered} onRevealed={handleRevealed} />
       <RewardLayer />
       <Announcer />
       <DemoDateBanner />

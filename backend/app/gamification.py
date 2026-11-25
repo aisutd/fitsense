@@ -53,10 +53,10 @@ LEAGUES = [
 
 AVATARS = [
     {"id": "starter", "name": "Trailblazer", "emoji": "🧑‍🚀", "cost": 0},
-    {"id": "fox", "name": "Quick Fox", "emoji": "🦊", "cost": 40},
-    {"id": "owl", "name": "Night Owl", "emoji": "🦉", "cost": 80},
-    {"id": "tiger", "name": "Iron Tiger", "emoji": "🐯", "cost": 140},
-    {"id": "dragon", "name": "Sky Dragon", "emoji": "🐉", "cost": 220},
+    {"id": "fox", "name": "Quick Fox", "emoji": "🦊", "cost": 150},
+    {"id": "owl", "name": "Night Owl", "emoji": "🦉", "cost": 300},
+    {"id": "tiger", "name": "Iron Tiger", "emoji": "🐯", "cost": 600},
+    {"id": "dragon", "name": "Sky Dragon", "emoji": "🐉", "cost": 1000},
 ]
 
 # Minimum points for each level: index 0 = level 1. Must start at 0 and ascend.

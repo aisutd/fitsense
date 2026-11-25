@@ -257,27 +257,6 @@ input[type="number"] {
   );
 }
 
-/* ---------- Screen transition (pixel dissolve) ---------- */
-@keyframes px-cover {
-  from { transform: scale(0); }
-  to { transform: scale(1.02); }
-}
-
-@keyframes px-reveal {
-  from { transform: scale(1.02); }
-  to { transform: scale(0); }
-}
-
-.px-cell {
-  position: absolute;
-  animation-duration: 220ms;
-  animation-timing-function: steps(4, end);
-  animation-fill-mode: both;
-}
-
-.px-cell[data-phase="covering"] { animation-name: px-cover; }
-.px-cell[data-phase="revealing"] { animation-name: px-reveal; }
-
 /* ---------- Score ring cells ---------- */
 @keyframes ring-pop {
   from { opacity: 0; transform: scale(0.2); }
@@ -314,25 +293,26 @@ input[type="number"] {
 }
 
 /* ---------- Logo heartbeat (BrandMark) ---------- */
-/* A beat every 5s (BEAT_MS in BrandMark.jsx). Each beat takes the first 2s: a pulse sweeps along
-   the heartbeat line behind the letters (pathLength 100, a 14-long dash; 0-36%), the letters glow
-   once, 5px to 10px around them, as it passes behind them (peak at 18.7%: the logo's centre is 52%
-   along the line), and a ring ripples out from the logo over about 1.07s (HeartbeatBackdrop),
-   lighting up cracks as it goes; then it rests. */
+/* One beat, played when the screen changes or something's logged (fx/beat.js restarts these): over
+   2s the heartbeat line pulses behind the letters (pathLength 100, a 14-long dash; 0-90%), the letters
+   glow once, 5px to 10px around them, as it passes behind them (peak at 46.75%: the logo's centre is
+   52% along the line), and a ring ripples out from the logo over about 1.07s (HeartbeatBackdrop),
+   lighting up cracks as it goes; then everything rests where it ended until the next beat. */
 .fs-trace {
   opacity: 0.7;
-  animation: fs-trace 5s linear infinite;
+  stroke-dashoffset: -100;
+  animation: fs-trace 2s linear both;
 }
 @keyframes fs-trace {
   0% { stroke-dashoffset: 14; }
-  36%, 100% { stroke-dashoffset: -100; }
+  90%, 100% { stroke-dashoffset: -100; }
 }
 .fs-glow {
-  animation: fs-glow 5s ease-in-out infinite;
+  animation: fs-glow 2s ease-in-out both;
 }
 @keyframes fs-glow {
-  0%, 12%, 27%, 100% { filter: drop-shadow(0 0 5px #4d8dff33) drop-shadow(0 0 5px #42e08b26); }
-  18.7% { filter: drop-shadow(0 0 10px #4d8dff80) drop-shadow(0 0 10px #42e08b60); }
+  0%, 30%, 67.5%, 100% { filter: drop-shadow(0 0 5px #4d8dff33) drop-shadow(0 0 5px #42e08b26); }
+  46.75% { filter: drop-shadow(0 0 10px #4d8dff80) drop-shadow(0 0 10px #42e08b60); }
 }
 
 /* The ring: a faint wash inside and a soft blue-to-green band at its edge, quick at first, then
@@ -347,14 +327,14 @@ input[type="number"] {
   opacity: 0;
   transform: scale(0.02);
   will-change: transform, opacity;
-  animation: fs-ripple 5s linear infinite;
+  animation: fs-ripple 2s linear both;
 }
 @keyframes fs-ripple {
-  0%, 18% { transform: scale(0.02); opacity: 0; }
-  18.7% { transform: scale(0.04); opacity: 1; }
-  23.1% { transform: scale(0.36); opacity: 0.9; }
-  29.3% { transform: scale(0.68); opacity: 0.55; }
-  40%, 100% { transform: scale(1); opacity: 0; }
+  0%, 45% { transform: scale(0.02); opacity: 0; }
+  46.75% { transform: scale(0.04); opacity: 1; }
+  57.75% { transform: scale(0.36); opacity: 0.9; }
+  73.25% { transform: scale(0.68); opacity: 0.55; }
+  100% { transform: scale(1); opacity: 0; }
 }
 
 /* The cracks: a mesh over the ripple (src/fx/crackMesh.js), masked to a band just inside the ring's
@@ -375,14 +355,14 @@ input[type="number"] {
   mask-image: var(--fs-band);
   filter: drop-shadow(0 0 3px #42e08b99);
   opacity: 0;
-  animation: fs-cracks 5s linear infinite;
+  animation: fs-cracks 2s linear both;
 }
 @keyframes fs-cracks {
-  0%, 18% { --fs-r: 0px; opacity: 0; }
-  18.7% { --fs-r: 2.2vmax; opacity: 0.85; }
-  23.1% { --fs-r: 19.6vmax; opacity: 0.75; }
-  29.3% { --fs-r: 37vmax; opacity: 0.45; }
-  40%, 100% { --fs-r: 54vmax; opacity: 0; }
+  0%, 45% { --fs-r: 0px; opacity: 0; }
+  46.75% { --fs-r: 2.2vmax; opacity: 0.85; }
+  57.75% { --fs-r: 19.6vmax; opacity: 0.75; }
+  73.25% { --fs-r: 37vmax; opacity: 0.45; }
+  100% { --fs-r: 54vmax; opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
