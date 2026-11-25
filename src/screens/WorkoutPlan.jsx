@@ -48,7 +48,7 @@ function usePlan(userId) {
   return { status, plan: data, error, reload };
 }
 
-// onExcuse(change, restOfWeek): only before the day is logged.
+// onExcuse(change, restOfWeek): on today's day, or another day before it's logged.
 function Exercise({ exercise, onExcuse, busy }) {
   const [open, setOpen] = useState(false);
   const [excusing, setExcusing] = useState(false);
@@ -196,7 +196,7 @@ function DayCard({ day, busy, onLog, onSwap, location, delay = 0, isToday = fals
               </p>
             )}
           </div>
-          <DayBody day={day} busy={busy} onLog={onLog} onSwap={onSwap} location={location} />
+          <DayBody day={day} busy={busy} onLog={onLog} onSwap={onSwap} location={location} isToday={isToday} />
         </div>
       </div>
     </motion.section>
@@ -268,8 +268,10 @@ function ExcusePanel({ day, busy, onSwap, onLog, location }) {
 }
 
 // A plan day's exercises and its log buttons (inside today's card, or an opened row).
-function DayBody({ day, busy, onLog, onSwap, location }) {
-  const open = !day.status && onSwap;   // excuses and swaps only before the day is logged
+// Excuses and swaps: always on today's day, even once it's logged (the gym's closed, the rack is taken
+// halfway through), and on other days until they're logged.
+function DayBody({ day, busy, onLog, onSwap, location, isToday = false }) {
+  const open = onSwap && (isToday || !day.status);
   return (
     <>
       <ul className="mt-3">
