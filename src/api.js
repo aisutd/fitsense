@@ -47,6 +47,8 @@ export const getHealthScore = (userId, range, endDate = localToday()) =>
   request("GET", `/healthscore/${userId}?range=${encodeURIComponent(range)}&end_date=${endDate}`);
 // Everything logged on one day (sleep = the night before it).
 export const getDayLog = (userId, date) => request("GET", `/logs/${userId}/day/${date}`);
+// Undo a day's logging (its workouts, steps, meals and the night of sleep before it).
+export const resetDay = (userId, date) => request("DELETE", `/logs/${userId}/day/${date}`);
 export const getForecasts = (userId) => request("GET", `/forecasts/${userId}`);
 export const getGamification = (userId) => request("GET", `/gamification/${userId}`);
 export const getLeague = (userId) => request("GET", `/gamification/${userId}/league`);
@@ -96,6 +98,8 @@ export const startMeal = (userId, logDate, mealType, items) =>
 export const deleteMealItem = (mealId, itemId) => request("DELETE", `/meals/${mealId}/items/${itemId}`);
 export const confirmMeal = (mealId) => request("POST", `/meals/${mealId}/confirm`);
 export const discardMeal = (mealId) => request("POST", `/meals/${mealId}/discard`);
+// Remove a logged meal and its ingredients.
+export const deleteMeal = (userId, mealId) => request("DELETE", `/meals/${mealId}?user_id=${userId}`);
 export const searchFoods = (q) => request("GET", `/foods/search?q=${encodeURIComponent(q)}`);
 export const suggestFoods = (q, signal) => request("GET", `/foods/suggest?q=${encodeURIComponent(q)}`, undefined, signal);
 

@@ -13,6 +13,7 @@ import { queries } from "../queries";
 import { useCachedQuery } from "../queryCache";
 import DateSwitcher from "../components/DateSwitcher";
 import DayLog from "../components/DayLog";
+import ResetToday from "../components/ResetToday";
 import DashboardHeader from "../components/DashboardHeader";
 
 const CATEGORY_ICONS = {
@@ -327,11 +328,12 @@ function HealthScore({ userId, profile, onEditProfile, onLogout, onNavigate }) {
       </div>
 
       <SummaryBar scores={scores} />
-      <DayLog userId={userId} date={date} today={today} refreshKey={gameRefresh} />
+      <DayLog userId={userId} date={date} today={today} refreshKey={gameRefresh} onChanged={handleLogged} />
       <LogPanel userId={userId} date={date} onLogged={handleLogged} request={logRequest} />
       <PlayerProfile profile={profile} onEdit={onEditProfile} />
 
       {data.disclaimer && <p className="mt-10 text-center text-sm text-muted">{data.disclaimer}</p>}
+      <ResetToday userId={userId} onReset={handleLogged} />
     </main>
   );
 }

@@ -55,6 +55,27 @@ def get_day(user_id: UUID, log_date: date, supabase: Client = Depends(get_supaba
             "activity": activity[0] if activity else None, "meals": meals}
 
 
+@router.delete("/logs/{user_id}/day/{log_date}")
+def reset_day(user_id: UUID, log_date: date, supabase: Client = Depends(get_supabase)):
+    """Undo a day's logging: its workouts, steps and meals (any status), and the night of sleep before
+    it, i.e. everything GET /logs/{user_id}/day/{log_date} shows. XP and FitCoins already earned stay,
+    and logging the same things again that day doesn't earn them twice."""
+    uid, day = str(user_id), log_date.isoformat()
+    night = (log_date - timedelta(days=1)).isoformat()
+    try:
+        workouts, sleep, activity, meals = parallel(
+            lambda: supabase.table("workout_logs").delete().eq("user_id", uid).eq("workout_date", day).execute().data,
+            lambda: supabase.table("sleep_logs").delete().eq("user_id", uid).eq("sleep_date", night).execute().data,
+            lambda: supabase.table("activity_logs").delete().eq("user_id", uid).eq("log_date", day).execute().data,
+            # a meal's ingredients go with it (meal_items cascade)
+            lambda: supabase.table("meal_entries").delete().eq("user_id", uid).eq("log_date", day).execute().data,
+        )
+    except APIError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to reset the day: {e.message}")
+    return {"date": day, "removed": {"workouts": len(workouts), "sleep": len(sleep), "activity": len(activity),
+                                     "meals": len(meals)}}
+
+
 @router.post("/logs/{user_id}/workouts")
 def log_workout(user_id: UUID, body: WorkoutLogIn, supabase: Client = Depends(get_supabase)):
     """Record a workout (completed, partial or skipped)."""
