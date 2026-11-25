@@ -31,9 +31,37 @@ async function request(method, path, body, signal) {
 }
 
 // The user's local date (YYYY-MM-DD), so "this week" matches their calendar.
-export function localToday() {
+// The real date on this device.
+export function realToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// For demos the app can run as of another day, past or future (DemoDate.jsx): every screen, log and
+// plan then treats that day as today. Kept in this browser only.
+const DEMO_DATE_KEY = "fitsense:demoDate";
+
+export function demoDate() {
+  try {
+    const value = localStorage.getItem(DEMO_DATE_KEY);
+    return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") && value !== realToday() ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setDemoDate(value) {
+  try {
+    if (value && value !== realToday()) localStorage.setItem(DEMO_DATE_KEY, value);
+    else localStorage.removeItem(DEMO_DATE_KEY);
+  } catch {
+    // storage blocked: stay on the real date
+  }
+}
+
+// "Today" for the app: the demo date when one is set, otherwise the real date.
+export function localToday() {
+  return demoDate() ?? realToday();
 }
 
 // Testing login: returns { user_id, username, has_profile }.

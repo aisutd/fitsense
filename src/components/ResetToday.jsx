@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { localToday, resetDay } from "../api";
+import { DemoDateButton } from "./DemoDate";
 
-// A small corner button on the home page that undoes today's logging (workouts, steps, meals and last
-// night's sleep), e.g. to log a day again from scratch. It asks first; onReset() refreshes the page's data.
+// The home page's bottom left corner, for demos: a small button that undoes today's logging (workouts,
+// steps, meals and last night's sleep; it asks first, then onReset() refreshes the page's data), and one
+// that runs the app as of another day (DemoDate.jsx).
 function ResetToday({ userId, onReset }) {
   const [step, setStep] = useState("idle");   // idle | confirm | busy
   const [note, setNote] = useState(null);
@@ -31,10 +33,13 @@ function ResetToday({ userId, onReset }) {
         </p>
       )}
       {step === "idle" ? (
-        <button type="button" onClick={() => setStep("confirm")} title="Clear everything logged today"
-          className="px-focus border border-night-600 bg-night-900/85 px-2.5 py-1 text-muted transition-colors hover:border-nutrition hover:text-nutrition">
-          ↺ Reset today
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setStep("confirm")} title="Clear everything logged today"
+            className="px-focus border border-night-600 bg-night-900/85 px-2.5 py-1 text-muted transition-colors hover:border-nutrition hover:text-nutrition">
+            ↺ Reset today
+          </button>
+          <DemoDateButton />
+        </div>
       ) : (
         <div role="group" aria-label="Reset today's logs"
           className="px-frame flex items-center gap-2 bg-night-900/95 px-3 py-2 [--frame:var(--color-nutrition)]">

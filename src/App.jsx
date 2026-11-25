@@ -5,6 +5,7 @@ import PixelTransition from "./components/PixelTransition";
 import RewardLayer from "./components/RewardLayer";
 import HeartbeatBackdrop from "./components/HeartbeatBackdrop";
 import Announcer from "./components/Announcer";
+import { DemoDateBanner } from "./components/DemoDate";
 import { NameGreeting, Information, GoalScreen, Proficiency, WorkoutDays, WorkoutLocation } from "./screens/Onboarding";
 import HealthScore from "./screens/HealthScore";
 import Auth from "./screens/Auth";
@@ -294,6 +295,7 @@ function App() {
       <PixelTransition phase={phase} onCovered={handleCovered} onRevealed={handleRevealed} />
       <RewardLayer />
       <Announcer />
+      <DemoDateBanner />
     </div>
   );
 }
