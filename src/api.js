@@ -31,9 +31,37 @@ async function request(method, path, body, signal) {
 }
 
 // The user's local date (YYYY-MM-DD), so "this week" matches their calendar.
-export function localToday() {
+// The real date on this device.
+export function realToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// For demos the app can run as of another day, past or future (DemoDate.jsx): every screen, log and
+// plan then treats that day as today. Kept in this browser only.
+const DEMO_DATE_KEY = "fitsense:demoDate";
+
+export function demoDate() {
+  try {
+    const value = localStorage.getItem(DEMO_DATE_KEY);
+    return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") && value !== realToday() ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setDemoDate(value) {
+  try {
+    if (value && value !== realToday()) localStorage.setItem(DEMO_DATE_KEY, value);
+    else localStorage.removeItem(DEMO_DATE_KEY);
+  } catch {
+    // storage blocked: stay on the real date
+  }
+}
+
+// "Today" for the app: the demo date when one is set, otherwise the real date.
+export function localToday() {
+  return demoDate() ?? realToday();
 }
 
 // Testing login: returns { user_id, username, has_profile }.
@@ -47,6 +75,8 @@ export const getHealthScore = (userId, range, endDate = localToday()) =>
   request("GET", `/healthscore/${userId}?range=${encodeURIComponent(range)}&end_date=${endDate}`);
 // Everything logged on one day (sleep = the night before it).
 export const getDayLog = (userId, date) => request("GET", `/logs/${userId}/day/${date}`);
+// Undo a day's logging (its workouts, steps, meals and the night of sleep before it).
+export const resetDay = (userId, date) => request("DELETE", `/logs/${userId}/day/${date}`);
 export const getForecasts = (userId) => request("GET", `/forecasts/${userId}`);
 export const getGamification = (userId) => request("GET", `/gamification/${userId}`);
 export const getLeague = (userId) => request("GET", `/gamification/${userId}/league`);
@@ -96,6 +126,8 @@ export const startMeal = (userId, logDate, mealType, items) =>
 export const deleteMealItem = (mealId, itemId) => request("DELETE", `/meals/${mealId}/items/${itemId}`);
 export const confirmMeal = (mealId) => request("POST", `/meals/${mealId}/confirm`);
 export const discardMeal = (mealId) => request("POST", `/meals/${mealId}/discard`);
+// Remove a logged meal and its ingredients.
+export const deleteMeal = (userId, mealId) => request("DELETE", `/meals/${mealId}?user_id=${userId}`);
 export const searchFoods = (q) => request("GET", `/foods/search?q=${encodeURIComponent(q)}`);
 export const suggestFoods = (q, signal) => request("GET", `/foods/suggest?q=${encodeURIComponent(q)}`, undefined, signal);
 

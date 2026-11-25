@@ -3,10 +3,11 @@ import { motion } from "motion/react";
 import { usePopIn } from "../fx/popIn";
 import PixelIcon from "./PixelIcon";
 import { ICONS } from "../icons";
-import { getDayLog } from "../api";
+import { deleteMeal, getDayLog } from "../api";
 import { dayLabel, shiftDay } from "./DateSwitcher";
 
-// What was logged on the day the HealthScore is showing.
+// What was logged on the day the HealthScore is showing. A logged meal can be removed (it asks first);
+// onChanged() then refreshes the score.
 
 const num = (n, digits = 0) => Number(n ?? 0).toLocaleString("en-US", { maximumFractionDigits: digits });
 const STATUS_COLOR = { completed: "text-activity", partial: "text-gold", skipped: "text-nutrition" };
@@ -23,8 +24,27 @@ function Row({ icon, color, title, pop, children }) {
   );
 }
 
-function DayLog({ userId, date, today, refreshKey }) {
+function DayLog({ userId, date, today, refreshKey, onChanged }) {
   const [state, setState] = useState({ status: "loading", day: null });
+  const [confirming, setConfirming] = useState(null);   // meal_id waiting for "Remove?" to be confirmed
+  const [removing, setRemoving] = useState(null);
+  const [removeError, setRemoveError] = useState(null);
+
+  async function removeMeal(meal) {
+    setRemoving(meal.meal_id);
+    setRemoveError(null);
+    try {
+      await deleteMeal(userId, meal.meal_id);
+      // drop it straight away; the refresh confirms it
+      setState((s) => ({ ...s, day: { ...s.day, meals: s.day.meals.filter((m) => m.meal_id !== meal.meal_id) } }));
+      onChanged?.();
+    } catch (e) {
+      setRemoveError(`Couldn't remove ${meal.display_name || "that meal"}: ${e.message}`);
+    } finally {
+      setRemoving(null);
+      setConfirming(null);
+    }
+  }
   const pop = usePopIn();   // the rows slide in one after another, like a React Bits AnimatedList
 
   useEffect(() => {
@@ -86,15 +106,32 @@ function DayLog({ userId, date, today, refreshKey }) {
               <>
                 <ul>
                   {meals.map((m) => (
-                    <li key={m.meal_id} className="flex justify-between gap-4">
+                    <li key={m.meal_id} className="flex items-center justify-between gap-4">
                       <span className="min-w-0 truncate">
                         {m.display_name || "Meal"}
                         {m.meal_type && <span className="text-muted"> · {m.meal_type}</span>}
                       </span>
-                      <span className="shrink-0 text-muted">{num(m.calories)} kcal</span>
+                      <span className="flex shrink-0 items-center gap-3">
+                        <span className="text-muted">{num(m.calories)} kcal</span>
+                        {confirming === m.meal_id ? (
+                          <span className="flex items-center gap-2 text-sm">
+                            <button type="button" disabled={removing === m.meal_id} onClick={() => removeMeal(m)}
+                              className="px-focus border border-nutrition px-2 text-nutrition hover:bg-nutrition/15 disabled:opacity-50">
+                              {removing === m.meal_id ? "Removing…" : "Remove"}
+                            </button>
+                            <button type="button" disabled={removing === m.meal_id} onClick={() => setConfirming(null)}
+                              className="px-focus text-muted hover:text-ink">Keep</button>
+                          </span>
+                        ) : (
+                          <button type="button" onClick={() => setConfirming(m.meal_id)}
+                            aria-label={`Remove ${m.display_name || "meal"}`} title="Remove this meal"
+                            className="px-focus px-1 text-muted hover:text-nutrition">✕</button>
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ul>
+                {removeError && <p role="alert" className="mt-1 text-sm text-nutrition">{removeError}</p>}
                 {meals.length > 1 && (
                   <p className="mt-1 text-muted">Total {num(totals.calories)} kcal · {num(totals.protein, 1)} g protein</p>
                 )}

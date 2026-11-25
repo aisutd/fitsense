@@ -106,6 +106,20 @@ def confirm_meal(meal_id: UUID, supabase: Client = Depends(get_supabase), catalo
     return _run(service.confirm, supabase, catalog, str(meal_id))
 
 
+@router.delete("/meals/{meal_id}")
+def delete_meal(meal_id: UUID, user_id: UUID, supabase: Client = Depends(get_supabase)):
+    """Remove a meal that was logged (confirmed or not), with its ingredients: it no longer counts toward
+    the HealthScore. user_id must be the meal's owner. XP already earned for it stays."""
+    try:
+        removed = (supabase.table("meal_entries").delete().eq("meal_id", str(meal_id)).eq("user_id", str(user_id))
+                   .execute().data)
+    except APIError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to remove the meal: {e.message}")
+    if not removed:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    return {"removed": str(meal_id)}
+
+
 @router.post("/meals/{meal_id}/discard", response_model=MealOut)
 def discard_meal(meal_id: UUID, supabase: Client = Depends(get_supabase), catalog: service.Catalog = Depends(get_catalog)):
     return _run(service.discard, supabase, catalog, str(meal_id))
